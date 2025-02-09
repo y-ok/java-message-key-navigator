@@ -83,7 +83,7 @@ export function getCustomPatterns(): RegExp[] {
 // ✅ 未定義のキーを properties に追加 & 追加後にジャンプ + カーソルを末尾に配置
 export async function addPropertyKey(key: string) {
   const propertiesPath = getPropertiesFilePath();
-  const newEntry = `\n${key} = `;
+  const newEntry = `\n${key}=`;
 
   try {
     // ✅ messages.properties にキーを追加
@@ -104,7 +104,7 @@ export async function addPropertyKey(key: string) {
     );
 
     if (lineIndex !== -1) {
-      const position = new vscode.Position(lineIndex, `${key} = `.length);
+      const position = new vscode.Position(lineIndex, `${key}=`.length);
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position));
 
