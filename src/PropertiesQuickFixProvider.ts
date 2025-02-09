@@ -24,7 +24,7 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
       return;
     }
 
-    const key = document.getText(range).replace(/"/g, "");
+    const key = document.getText(range).trim().replace(/"/g, ""); // ✅ 余計なスペース削除
     outputChannel.appendLine(`🔍 対象のメッセージキー: ${key}`);
 
     const actions: vscode.CodeAction[] = [];
@@ -37,7 +37,7 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     addAction.command = {
       command: "java-i18n-ally.addPropertyKey",
       title: "メッセージキーを追加",
-      arguments: [key],
+      arguments: [key.trim()], // ✅ 余計なスペース削除
     };
     actions.push(addAction);
     outputChannel.appendLine(
@@ -47,16 +47,17 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     // ✅ 既存のメッセージキーから提案
     const existingKeys = getAllPropertyKeys();
     for (const existingKey of existingKeys) {
-      if (existingKey.includes(key) || key.includes(existingKey)) {
+      const trimmedKey = existingKey.trim(); // ✅ 余計なスペース削除
+      if (trimmedKey.includes(key) || key.includes(trimmedKey)) {
         const replaceAction = new vscode.CodeAction(
-          `🔄 "${key}" を "${existingKey}" に変更`,
+          `🔄 "${key}" を "${trimmedKey}" に変更`,
           vscode.CodeActionKind.QuickFix
         );
         replaceAction.edit = new vscode.WorkspaceEdit();
-        replaceAction.edit.replace(document.uri, range, `"${existingKey}"`);
+        replaceAction.edit.replace(document.uri, range, `"${trimmedKey}"`);
         actions.push(replaceAction);
         outputChannel.appendLine(
-          `✅ クイックフィックス: "${key}" を "${existingKey}" に置換`
+          `✅ クイックフィックス: "${key}" を "${trimmedKey}" に置換`
         );
       }
     }

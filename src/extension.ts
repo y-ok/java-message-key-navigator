@@ -11,21 +11,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   const diagnostics = vscode.languages.createDiagnosticCollection("messages");
 
-  // 🔹 HoverProvider, DefinitionProvider, QuickFixProvider の二重登録防止
-  if (
-    !context.subscriptions.some(
-      (sub) =>
-        sub instanceof vscode.Disposable &&
-        (sub as any).constructor.name === "PropertiesHoverProvider"
+  // ✅ HoverProvider, DefinitionProvider, QuickFixProvider を登録
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      "java",
+      new PropertiesHoverProvider()
     )
-  ) {
-    context.subscriptions.push(
-      vscode.languages.registerHoverProvider(
-        "java",
-        new PropertiesHoverProvider()
-      )
-    );
-  }
+  );
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
@@ -50,7 +42,22 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // ✅ Java ファイルが開かれた・変更されたときに診断実行
+  // ✅ ドキュメント変更時の処理を最適化
+  let validationTimeout: NodeJS.Timeout | undefined;
+
+  function scheduleValidation(document: vscode.TextDocument) {
+    if (document.languageId !== "java") return;
+
+    if (validationTimeout) clearTimeout(validationTimeout);
+
+    validationTimeout = setTimeout(() => {
+      outputChannel.appendLine(
+        "🔍 ドキュメント変更によりプロパティを再検証..."
+      );
+      validateProperties(document, diagnostics);
+    }, 500); // 500ms 待機して変更が止まったら実行
+  }
+
   vscode.workspace.onDidOpenTextDocument((document) => {
     if (document.languageId === "java") {
       validateProperties(document, diagnostics);
@@ -58,9 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   vscode.workspace.onDidChangeTextDocument((event) => {
-    if (event.document.languageId === "java") {
-      validateProperties(event.document, diagnostics);
-    }
+    scheduleValidation(event.document);
   });
 
   vscode.window.onDidChangeActiveTextEditor((editor) => {

@@ -4,6 +4,23 @@ import { getCustomPatterns, getPropertyValue } from "./utils";
 
 export class PropertiesHoverProvider implements vscode.HoverProvider {
   private lastHoveredKey: string | null = null;
+  private processedKeys = new Set<string>();
+
+  constructor() {
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      this.resetState();
+    });
+
+    vscode.workspace.onDidChangeTextDocument(() => {
+      this.resetState();
+    });
+  }
+
+  private resetState() {
+    outputChannel.appendLine("🔄 ドキュメント変更により状態をリセット");
+    this.lastHoveredKey = null;
+    this.processedKeys.clear();
+  }
 
   provideHover(
     document: vscode.TextDocument,
@@ -12,7 +29,6 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
     const text = document.getText();
     const offset = document.offsetAt(position);
     const patterns = getCustomPatterns();
-    const processedKeys = new Set<string>();
 
     outputChannel.appendLine("🔍 Hover処理を実行...");
 
@@ -22,7 +38,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
 
       while ((match = regex.exec(text)) !== null) {
         const key = match[1];
-        if (!key || processedKeys.has(key)) continue;
+        if (!key) continue;
 
         const start = match.index + match[0].indexOf(key);
         const end = start + key.length;
@@ -32,9 +48,15 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
             outputChannel.appendLine(`⚠️ 直前と同じキーのため無視: ${key}`);
             return;
           }
-          this.lastHoveredKey = key;
 
-          processedKeys.add(key);
+          if (this.processedKeys.has(key)) {
+            outputChannel.appendLine(`⚠️ 既に処理済みのキーをスキップ: ${key}`);
+            continue;
+          }
+
+          this.lastHoveredKey = key;
+          this.processedKeys.add(key);
+
           outputChannel.appendLine(
             `✅ Hover対象キー: ${key} (パターン: ${regex})`
           );
