@@ -3,7 +3,7 @@
 すべての変更履歴を記録します。
 All notable changes to the "java-i18n-ally" extension will be documented in this file.
 
-## [0.0.1] - 2025-02-09
+## [1.0.0] - 2025-02-09
 
 ### Added
 

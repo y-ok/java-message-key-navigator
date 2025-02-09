@@ -1,6 +1,23 @@
-out
-dist
-node_modules
+# ビルド後に不要なフォルダ
+out/
+dist/
+node_modules/
 .vscode-test/
+
+# 一時ファイル & 不要なファイル
 *.vsix
 .DS_Store
+
+# ソースコード関連 (バンドル後に不要)
+src/
+test/
+
+# Git & CI/CD 関連
+.git/
+.github/
+.vscode/
+
+# 開発設定ファイル
+.eslintrc.js
+tsconfig.json
+package-lock.json

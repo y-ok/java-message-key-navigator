@@ -1,11 +1,22 @@
-.vscode/**
-.vscode-test/**
-src/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
-**/*.ts
-**/.vscode-test.*
+# ビルド後に不要なフォルダ
+dist/
+node_modules/
+.vscode-test/
+
+# 一時ファイル & 不要なファイル
+*.vsix
+.DS_Store
+
+# ソースコード関連 (バンドル後に不要)
+src/
+test/
+
+# Git & CI/CD 関連
+.git/
+.github/
+.vscode/
+
+# 開発設定ファイル
+.eslintrc.js
+package-lock.json
+!out/extension.js
