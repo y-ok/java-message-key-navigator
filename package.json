@@ -3,7 +3,8 @@
   "displayName": "Java I18N Ally",
   "description": "JavaのI18Nメッセージを補助するVSCode拡張",
   "publisher": "TOMATOofGOHAN",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.97.0"
   },
