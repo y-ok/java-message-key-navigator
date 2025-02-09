@@ -36,13 +36,18 @@ function getProperties(): { [key: string]: string } {
   if (!fs.existsSync(propertiesPath)) return {};
 
   const content = fs.readFileSync(propertiesPath, "utf-8");
+
   return Object.fromEntries(
     content
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0 && !line.startsWith("#")) // 空行・コメント行を無視
-      .map((line) => line.split("=").map((v) => v.trim()))
-      .filter(([k, v]) => k && v) // `key=value` の形式のみ取得
+      .map((line) => {
+        const [key, ...valueParts] = line.split("="); // `=` で分割
+        const value = valueParts.join("=").trim(); // `=` を含む値も正しく結合
+
+        return [key.trim(), value]; // **valueが空でもOKに変更**
+      })
   );
 }
 
@@ -51,7 +56,6 @@ export function isPropertyDefined(key: string): boolean {
   return Object.hasOwn(getProperties(), key);
 }
 
-// ✅ メッセージキーの定義位置を取得
 // ✅ メッセージキーの定義位置を取得
 export function findPropertyLocation(
   key: string
