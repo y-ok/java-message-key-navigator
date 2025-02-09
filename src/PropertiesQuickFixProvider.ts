@@ -24,7 +24,6 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
       return;
     }
 
-    // 🔍 診断情報がある場合
     const key = document.getText(range).replace(/"/g, "");
     outputChannel.appendLine(`🔍 対象のメッセージキー: ${key}`);
 

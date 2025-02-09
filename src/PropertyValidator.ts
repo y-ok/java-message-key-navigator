@@ -12,6 +12,7 @@ export function validateProperties(
   let errors: vscode.Diagnostic[] = [];
 
   for (const regex of patterns) {
+    regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
       const key = match[1] || match[2];

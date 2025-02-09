@@ -9,7 +9,6 @@ node_modules/
 .DS_Store
 
 # ソースコード関連 (バンドル後に不要)
-src/
 test/
 
 # Git & CI/CD 関連
@@ -19,5 +18,3 @@ test/
 
 # 開発設定ファイル
 .eslintrc.js
-tsconfig.json
-package-lock.json
