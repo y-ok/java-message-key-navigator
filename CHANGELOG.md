@@ -1,9 +1,14 @@
-# Change Log
+# Changelog
 
+すべての変更履歴を記録します。
 All notable changes to the "java-i18n-ally" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [0.0.1] - 2025-02-09
 
-## [Unreleased]
+### Added
 
-- Initial release
+- 初回リリース
+- メッセージキーのホバー表示機能
+- 定義へジャンプ (Ctrl+クリック / Cmd+クリック)
+- 未定義キーの警告
+- クイックフィックス機能 (messages.properties へ追加)

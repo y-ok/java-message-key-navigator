@@ -1,26 +1,55 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import { PropertiesDefinitionProvider } from "./DefinitionProvider";
+import { PropertiesHoverProvider } from "./HoverProvider";
+import { PropertiesQuickFixProvider } from "./PropertiesQuickFixProvider";
+import { validateProperties } from "./PropertyValidator";
+import { addPropertyKey } from "./utils";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+  const diagnostics = vscode.languages.createDiagnosticCollection("messages");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "java-i18n-ally" is now active!');
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      "java",
+      new PropertiesHoverProvider()
+    )
+  );
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      "java",
+      new PropertiesDefinitionProvider()
+    )
+  );
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      "java",
+      new PropertiesQuickFixProvider(),
+      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+    )
+  );
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('java-i18n-ally.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from java-i18n-ally!');
-	});
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "java-i18n-ally.addPropertyKey",
+      (key: string) => addPropertyKey(key)
+    )
+  );
 
-	context.subscriptions.push(disposable);
+  vscode.workspace.onDidOpenTextDocument((document) => {
+    if (document.languageId === "java") {
+      validateProperties(document, diagnostics);
+    }
+  });
+
+  vscode.workspace.onDidChangeTextDocument((event) => {
+    if (event.document.languageId === "java") {
+      validateProperties(event.document, diagnostics);
+    }
+  });
+
+  vscode.window.onDidChangeActiveTextEditor((editor) => {
+    if (editor && editor.document.languageId === "java") {
+      validateProperties(editor.document, diagnostics);
+    }
+  });
 }
-
-// This method is called when your extension is deactivated
-export function deactivate() {}

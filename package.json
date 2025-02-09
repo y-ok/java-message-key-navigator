@@ -1,31 +1,38 @@
 {
   "name": "java-i18n-ally",
-  "displayName": "java-i18n-ally",
-  "description": "",
+  "displayName": "Java I18N Ally",
+  "description": "JavaのI18Nメッセージを補助するVSCode拡張",
+  "publisher": "TOMATOofGOHAN",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.97.0"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:java"
+  ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "java-i18n-ally.helloWorld",
-        "title": "Hello World"
+    "configuration": {
+      "title": "Java I18N Ally",
+      "properties": {
+        "java-i18n-ally.customMethods": {
+          "type": "array",
+          "description": "I18N メッセージキーを取得するメソッドパターン",
+          "default": []
+        }
       }
-    ]
+    }
   },
+  "readme": "README.md",
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "build": "tsc && vsce package"
   },
   "devDependencies": {
     "@types/vscode": "^1.97.0",
@@ -34,8 +41,10 @@
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "eslint": "^9.19.0",
-    "typescript": "^5.7.3",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TOMATOofGOHAN/java-i18n-ally.git"
   }
 }
