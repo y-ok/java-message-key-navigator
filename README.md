@@ -7,46 +7,49 @@
 
 ## 🚀 Key Features
 
-- **Hover Previews**  
-  Place your cursor on any call like
-  ```java
-  infrastructureLogger.log("PLF1001");
-  ````
+This extension provides powerful features to streamline your Java internationalization workflow:
 
-and see the localized message right in the editor.
+**Hover Previews**
+Place your cursor on any call like
 
-* **Go to Definition**
-  ⌘ Click (macOS) / Ctrl Click jumps you straight to where that key is declared in your `.properties` files.
+```java
+infrastructureLogger.log("PLF1001");
+```
 
-* **Undefined Key Detection & Quick Fixes**
-  ⚠️ If you refer to a key that isn’t defined anywhere, you’ll get a warning—and a one-click fix to insert it.
-  Under the hood, the quick-fix runs a function that:
+and instantly see the localized message inline.
 
-  1. **Resolves** your glob or path to an actual `.properties` file.
-  2. **Reads** every line, strips comments/blanks, and builds a list of existing keys.
-  3. **Checks** for duplicates (aborts with a warning if the key already exists).
-  4. **Determines** the correct insert position by finding the first existing key lexicographically greater than yours—so if you add `PLF4997` after `PLF4998`, it inserts right before `PLF4998`.
-  5. **Splices** the new entry into the file, **rewrites** it in one go, **reopens** the file, and **moves** your cursor to the newly added line.
+**Go to Definition**
+Use ⌘ Click (macOS) or Ctrl Click to jump directly to the line in your `.properties` file where the key is defined.
 
-* **Custom Extraction Patterns**
-  Configure your own method-call patterns (regex) for pulling out I18N keys, e.g.
+**Undefined Key Detection & Quick Fixes**
+When you use a key that doesn’t exist in any of your `.properties` files, a warning will appear automatically. The extension offers a quick fix that:
 
-  ```json
-  "java-message-key-navigator.messageKeyExtractionPatterns": [
-    "infrastructureLogger\\.log",
-    "appLogger\\.warn"
-  ]
-  ```
+1. Resolves your property file globs or paths to actual `.properties` files.
+2. Reads each file line by line, strips comments and blank lines, and builds a list of existing keys.
+3. Checks for duplicate keys, aborting with a warning if the key already exists.
+4. Determines the correct insertion position by finding the first existing key lexicographically greater than your new key — for example, inserting `PLF4997` before `PLF4998` if needed.
+5. Splices the new key-value entry into the file, rewrites the file in one go, reopens it, and moves your cursor directly to the inserted line.
+6. If multiple `.properties` files are present, prompts you with a dialog so you can select which file to add the new key to, giving you precise control over key organization.
 
-* **Multi-File Support**
-  Point the extension at any number of `.properties` file globs, for example:
+**Custom Extraction Patterns**
+You can configure your own regular expressions for detecting message key invocations, e.g.:
 
-  ```json
-  "java-message-key-navigator.propertyFileGlobs": [
-    "src/main/resources/message*.properties",
-    "src/main/resources/validation/**/*.properties"
-  ]
-  ```
+```json
+"java-message-key-navigator.messageKeyExtractionPatterns": [
+  "infrastructureLogger\\.log",
+  "appLogger\\.warn"
+]
+```
+
+**Multi-File Support**
+The extension supports multiple `.properties` files specified using glob patterns, for example:
+
+```json
+"java-message-key-navigator.propertyFileGlobs": [
+  "src/main/resources/message*.properties",
+  "src/main/resources/validation/**/*.properties"
+]
+```
 
 ---
 
@@ -79,12 +82,30 @@ Add these to your **User** or **Workspace** `settings.json`:
 
 ## 📖 Usage
 
-1. **Hover**
+1. **Hover**  
    Hover over any supported method call to see the message value inline.
-2. **Definition**
+
+2. **Definition**  
    ⌘ Click / Ctrl Click to jump to the exact line in the `.properties` file.
-3. **Quick Fix**
+
+3. **Quick Fix**  
    When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key in the correct sorted position of your chosen file.
+
+4. **Choose Target Property File**  
+   If multiple property files are available, a dialog will appear letting you select which file the new key should be added to. This helps you manage multiple `.properties` files without manually editing each one.
+
+   <img src="images/sample2.png" width="600"/>
+
+   <img src="images/sample3.png" width="250"/>
+
+   <img src="images/sample4.png" width="500"/>
+
+   <img src="images/sample5.png" width="450"/>
+
+5. **Completion for Existing Keys**  
+   As you type inside supported method calls, existing keys are suggested as completion candidates, letting you quickly select an existing key.
+
+   <img src="images/sample1.png" width="600"/>
 
 ---
 

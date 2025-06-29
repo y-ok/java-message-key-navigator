@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.2] - 2025-06-30
+
+### Added
+- When an undefined message key is detected, you can now choose the target `.properties` file to insert the new key if multiple property files are present.
+- Updated usage documentation and screenshots in `README.md` to illustrate the new multi-file selection feature.
+
+---
+
 ## [1.0.1] - 2025-06-29
 
 ### Changed
