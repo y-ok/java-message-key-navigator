@@ -3,7 +3,7 @@
   "displayName": "Java Message Key Navigator",
   "description": "A VS Code extension to assist with Java I18N (internationalization) message management",
   "publisher": "y-ok",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
@@ -21,7 +21,7 @@
       "properties": {
         "java-message-key-navigator.messageKeyExtractionPatterns": {
           "type": "array",
-          "description": "Method invocation patterns (regular expressions) for extracting I18N message keys",
+          "description": "Specifies the method invocation patterns (regular expressions) to target for extracting I18N message keys. For example: infrastructureLogger\\.log. Completion will only be enabled within method calls matching the configured patterns.",
           "default": []
         },
         "java-message-key-navigator.propertyFileGlobs": {

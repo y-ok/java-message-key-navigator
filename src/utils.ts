@@ -59,8 +59,8 @@ export function isPropertyDefined(key: string): boolean {
 /**
  * キャッシュからキーの値を取得します。
  */
-export function getPropertyValue(key: string): string | null {
-  return propertyCache[key] ?? null;
+export function getPropertyValue(key: string): string | undefined {
+  return propertyCache[key];
 }
 
 /**
@@ -68,8 +68,13 @@ export function getPropertyValue(key: string): string | null {
  * メッセージキー抽出用の正規表現リストを返します。
  */
 export function getCustomPatterns(): RegExp[] {
-  const config = vscode.workspace.getConfiguration("java-message-key-navigator");
-  const messageKeyExtractionPatterns = config.get<string[]>("messageKeyExtractionPatterns", []);
+  const config = vscode.workspace.getConfiguration(
+    "java-message-key-navigator"
+  );
+  const messageKeyExtractionPatterns = config.get<string[]>(
+    "messageKeyExtractionPatterns",
+    []
+  );
   const methods = [...messageKeyExtractionPatterns, "messageSource.getMessage"];
   return methods.map((method) => {
     const esc = method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -86,7 +91,9 @@ export function getCustomPatterns(): RegExp[] {
 export async function findPropertyLocation(
   key: string
 ): Promise<{ filePath: string; position: vscode.Position } | null> {
-  const config = vscode.workspace.getConfiguration("java-message-key-navigator");
+  const config = vscode.workspace.getConfiguration(
+    "java-message-key-navigator"
+  );
   const customGlobs = config.get<string[]>("propertyFileGlobs", []);
   for (const pattern of customGlobs) {
     const uris = await vscode.workspace.findFiles(pattern);
@@ -110,16 +117,15 @@ export async function findPropertyLocation(
  * QuickFix から呼ばれて、指定ファイルのソート順に従い
  * 指定キーを適切な位置に挿入＆カーソル移動します。
  */
-export async function addPropertyKey(
-  key: string,
-  fileToUse: string
-) {
+export async function addPropertyKey(key: string, fileToUse: string) {
   // fileToUse が glob の場合は実ファイルパスを解決
   let targetPath = fileToUse;
   if (!path.isAbsolute(fileToUse) || !fs.existsSync(fileToUse)) {
     const uris = await vscode.workspace.findFiles(fileToUse, undefined, 1);
     if (uris.length === 0) {
-      vscode.window.showErrorMessage(`❌ Property file not found: ${fileToUse}`);
+      vscode.window.showErrorMessage(
+        `❌ Property file not found: ${fileToUse}`
+      );
       return;
     }
     targetPath = uris[0].fsPath;
