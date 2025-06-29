@@ -1,91 +1,127 @@
+# Java Message Key Navigator
 
-# Java I18N Ally 🌍
+**Java Message Key Navigator** is a VS Code extension designed to supercharge your Java internationalization (I18N) workflow. Hover over any I18N method call to instantly preview the corresponding value from your `.properties` files, and use ⌘/Ctrl + click to jump straight to its definition. When a key is missing, you’ll see an automatic warning plus a one-click quick fix that inserts the new key in the correct sorted order—no more manual file edits or guesswork. With customizable extraction patterns and support for multiple property-file globs, this extension keeps your message keys organized and your development flow uninterrupted.
 
-**Javaプロジェクトの国際化（I18N）対応を強化するVSCode拡張機能**<br/>
-*A VSCode extension for mapping Java string literals to property keys for internationalization (I18N).*
-
----
-
-## 🚀 Features / 機能
-
-- 🔍 **Hover Support / ホバーサポート**
-
-  `messageSource.getMessage("key")` にカーソルを当てると、対応する `messages.properties` の値を表示<br/>
-  Hovering over `messageSource.getMessage("key")` displays the corresponding value from the `messages.properties` file.
-
-- 🔗 **Go to Definition / 定義へジャンプ**
-
-  Ctrl+クリック（macOSではCmd+クリック）でプロパティの定義へ直接移動  
-  Ctrl+Click (or Cmd+Click on macOS) jumps directly to the property's definition.
-
-- ⚠️ **Undefined Key Warning / 未定義キーの警告**
-
-  存在しないプロパティキーを警告として表示し、クイックフィックスを提供<br/>
-  Displays warnings for missing property keys and provides quick fixes.
-
-- 🛠 **Quick Fix Support / クイックフィックス機能**
-
-  `messages.properties` に未定義キーを追加、または類似の既存キーに変更可能<br/>
-  Add missing keys to `messages.properties` or replace them with similar existing keys.
-
-- 🔧 **Custom Method Patterns / カスタムメソッドパターン対応**
-
-  設定ファイルで、I18Nキーを抽出するメソッドを自由に追加可能<br/>
-  Configure additional method patterns for extracting I18N keys via settings.
 
 ---
 
-## 📦 Installation / インストール手順
+## 🚀 Key Features
 
-1. **Clone the repository / リポジトリをクローン:**
+- **Hover Previews**  
+  Place your cursor on any call like
+  ```java
+  infrastructureLogger.log("PLF1001");
+  ````
 
-   ```sh
-   git clone https://github.com/TOMATOofGOHAN/java-i18n-ally.git
-   ```
+and see the localized message right in the editor.
 
-2. **Navigate to the project directory / プロジェクトディレクトリへ移動:**
+* **Go to Definition**
+  ⌘ Click (macOS) / Ctrl Click jumps you straight to where that key is declared in your `.properties` files.
 
-   ```sh
-   cd java-i18n-ally
-   ```
+* **Undefined Key Detection & Quick Fixes**
+  ⚠️ If you refer to a key that isn’t defined anywhere, you’ll get a warning—and a one-click fix to insert it.
+  Under the hood, the quick-fix runs a function that:
 
-3. **Install dependencies / 依存パッケージをインストール:**
+  1. **Resolves** your glob or path to an actual `.properties` file.
+  2. **Reads** every line, strips comments/blanks, and builds a list of existing keys.
+  3. **Checks** for duplicates (aborts with a warning if the key already exists).
+  4. **Determines** the correct insert position by finding the first existing key lexicographically greater than yours—so if you add `PLF4997` after `PLF4998`, it inserts right before `PLF4998`.
+  5. **Splices** the new entry into the file, **rewrites** it in one go, **reopens** the file, and **moves** your cursor to the newly added line.
 
-   ```sh
-   npm install
-   ```
+* **Custom Extraction Patterns**
+  Configure your own method-call patterns (regex) for pulling out I18N keys, e.g.
 
-4. **Build the extension / 拡張機能をビルド:**
+  ```json
+  "java-message-key-navigator.messageKeyExtractionPatterns": [
+    "infrastructureLogger\\.log",
+    "appLogger\\.warn"
+  ]
+  ```
 
-   ```sh
-   npm run build
-   ```
+* **Multi-File Support**
+  Point the extension at any number of `.properties` file globs, for example:
 
-5. **Run in VSCode / VSCodeで拡張機能を起動:**
-   - **Open the project in VSCode / プロジェクトをVSCodeで開く**
-   - **Press `F5` to launch the extension in a new VSCode window / `F5` を押して、新しいVSCodeウィンドウで拡張機能を実行**
+  ```json
+  "java-message-key-navigator.propertyFileGlobs": [
+    "src/main/resources/message*.properties",
+    "src/main/resources/validation/**/*.properties"
+  ]
+  ```
 
 ---
 
-## ⚙️ Configuration / 設定方法
+## ⚙️ Configuration
 
-**Customize method patterns for I18N key detection in `settings.json`.**<br/>
-**`settings.json` にカスタムメソッドを追加して、I18Nキーの取得対象を拡張できます:**
+Add these to your **User** or **Workspace** `settings.json`:
 
-```json
+```jsonc
 {
-  "java-i18n-ally.customMethods": [
-    "MessageUtils.log",
-    "MessageUtils.debug",
-    "MessageUtils.warn",
-    "MessageUtils.error"
+  // Which method calls carry your I18N keys (regex)
+  "java-message-key-navigator.messageKeyExtractionPatterns": [
+    "infrastructureLogger\\.log",
+    "appLogger\\.warn"
+  ],
+
+  // Which .properties files to read & write (glob patterns)
+  "java-message-key-navigator.propertyFileGlobs": [
+    "src/main/resources/message*.properties",
+    "src/main/resources/validation/**/*.properties"
   ]
 }
 ```
 
+| Setting                                | Description                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| `messageKeyExtractionPatterns` (array) | Regex patterns for method calls to scan for keys                                    |
+| `propertyFileGlobs` (array)            | Glob patterns for your `.properties` files to include in look-up and auto-insertion |
+
 ---
 
-## 📜 License / ライセンス
+## 📖 Usage
 
-This project is licensed under the [MIT License](LICENSE).<br/>
-このプロジェクトは [MIT License](LICENSE) のもとで提供されています。
+1. **Hover**
+   Hover over any supported method call to see the message value inline.
+2. **Definition**
+   ⌘ Click / Ctrl Click to jump to the exact line in the `.properties` file.
+3. **Quick Fix**
+   When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key in the correct sorted position of your chosen file.
+
+---
+
+## 🛠 Maintenance
+
+1. **Clone & install**
+
+   ```bash
+   git clone https://github.com/y-ok/java-message-key-navigator.git
+   cd java-message-key-navigator
+   npm install
+   ```
+2. **Build & package**
+
+   ```bash
+   npm run build
+   ```
+3. **Run in VS Code**
+
+   * Open this folder in VS Code
+   * Press **F5** to launch a fresh Extension Development Host
+4. **Or install the VSIX**
+
+   ```bash
+   code --install-extension java-message-key-navigator-(version).vsix
+   ```
+
+---
+
+## 🛡 License
+
+This project is released under the [MIT License](LICENSE).
+Feel free to fork, adapt, and share!
+
+---
+
+## Credits
+
+This extension is a fork of [TOMATOofGOHAN/java-i18n-ally](https://github.com/TOMATOofGOHAN/java-i18n-ally) (MIT License).
+Thank you [TOMATOofGOHAN](https://github.com/TOMATOofGOHAN) for the original work!

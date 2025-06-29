@@ -1,49 +1,46 @@
 import * as vscode from "vscode";
+import {
+  loadPropertyDefinitions,
+  getCustomPatterns,
+  isPropertyDefined,
+} from "./utils";
 import { outputChannel } from "./outputChannel";
-import { getCustomPatterns, isPropertyDefined } from "./utils";
 
-export function validateProperties(
+export async function validateProperties(
   document: vscode.TextDocument,
-  diagnostics: vscode.DiagnosticCollection
-) {
+  diagnostics: vscode.DiagnosticCollection,
+  customGlobs: string[] = []
+): Promise<void> {
+  outputChannel.appendLine(`🔔 validateProperties start: ${JSON.stringify(customGlobs)}`);
+  await loadPropertyDefinitions(customGlobs);
+
   const text = document.getText();
   const patterns = getCustomPatterns();
-  let errors: vscode.Diagnostic[] = [];
+  const errors: vscode.Diagnostic[] = [];
+  outputChannel.appendLine("🔍 Starting properties validation...");
 
-  outputChannel.appendLine("🔍 プロパティ検証開始...");
-
-  for (const regex of patterns) {
-    regex.lastIndex = 0; // ✅ 検索位置リセット
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      const key = match[1] || match[2]; // 🔍 マッチしたキーを取得
+  for (const re of patterns) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      const key = m[1]?.trim();
       if (!key) continue;
-
-      const trimmedKey = key.trim(); // ✅ 余計なスペース削除
-
-      const range = new vscode.Range(
-        document.positionAt(match.index + match[0].indexOf(trimmedKey)),
-        document.positionAt(
-          match.index + match[0].indexOf(trimmedKey) + trimmedKey.length
-        )
-      );
-
-      if (!isPropertyDefined(trimmedKey)) {
-        const diagnostic = new vscode.Diagnostic(
+      const start = document.positionAt(m.index + m[0].indexOf(key));
+      const end = document.positionAt(m.index + m[0].indexOf(key) + key.length);
+      const range = new vscode.Range(start, end);
+      if (!isPropertyDefined(key)) {
+        const diag = new vscode.Diagnostic(
           range,
-          `🚨 未定義のメッセージキー: '${trimmedKey}'`,
+          `🚨 Undefined message key: '${key}'`,
           vscode.DiagnosticSeverity.Warning
         );
-        diagnostic.code = "undefinedMessageKey";
-        errors.push(diagnostic);
-        outputChannel.appendLine(`❌ 未定義キー検出: ${trimmedKey}`);
+        diag.code = "undefinedMessageKey";
+        errors.push(diag);
+        outputChannel.appendLine(`❌ Undefined key detected: ${key}`);
       }
     }
   }
 
   diagnostics.set(document.uri, errors);
-  outputChannel.appendLine(
-    `✅ プロパティ検証完了: ${errors.length} 件のエラー`
-  );
+  outputChannel.appendLine(`✅ Properties validation completed: ${errors.length} errors`);
 }

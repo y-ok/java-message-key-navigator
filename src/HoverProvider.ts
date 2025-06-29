@@ -12,7 +12,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
     const patterns = getCustomPatterns();
     const processedKeys = new Set<string>();
 
-    outputChannel.appendLine("🔍 Hover処理を実行...");
+    outputChannel.appendLine("🔍 Executing hover operation...");
 
     for (const regex of patterns) {
       regex.lastIndex = 0;
@@ -28,7 +28,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
         if (offset >= start && offset <= end) {
           processedKeys.add(key);
           outputChannel.appendLine(
-            `✅ Hover対象キー: ${key} (パターン: ${regex})`
+            `✅ Hover target key: ${key} (pattern: ${regex})`
           );
 
           let value = getPropertyValue(key);
@@ -39,7 +39,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
             }
 
             outputChannel.appendLine(
-              `📢 Hoverメッセージを表示: 🔤 **メッセージ:** ${value}`
+              `📢 Displaying hover message: 🔤 Message: ${value}`
             );
             return new vscode.Hover(new vscode.MarkdownString(value));
           }

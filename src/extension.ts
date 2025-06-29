@@ -1,78 +1,84 @@
+console.log("🔍 [Java I18N Ally] extension.ts をロードしました");
+
 import * as vscode from "vscode";
 import { PropertiesDefinitionProvider } from "./DefinitionProvider";
 import { PropertiesHoverProvider } from "./HoverProvider";
 import { PropertiesQuickFixProvider } from "./PropertiesQuickFixProvider";
 import { validateProperties } from "./PropertyValidator";
-import { outputChannel } from "./outputChannel";
-import { addPropertyKey } from "./utils";
+import { loadPropertyDefinitions, addPropertyKey } from "./utils";
+import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
-export function activate(context: vscode.ExtensionContext) {
-  outputChannel.appendLine("✅ Java I18N Ally: 拡張機能が有効化されました");
+export async function activate(context: vscode.ExtensionContext) {
+  initializeOutputChannel();
+  console.log("✅ [Java I18N Ally] activate() が呼ばれました");
 
+  const propertyFileGlobs: string[] = vscode.workspace
+    .getConfiguration("java-message-key-navigator")
+    .get("propertyFileGlobs", []);
+
+  // デフォルトファイルは読み込まず、カスタムのみ
+  await loadPropertyDefinitions(propertyFileGlobs);
+
+  outputChannel.appendLine("✅ Java Message Key Navigator is now active");
   const diagnostics = vscode.languages.createDiagnosticCollection("messages");
-
-  // ✅ HoverProvider, DefinitionProvider, QuickFixProvider を登録
-  context.subscriptions.push(
-    vscode.languages.registerHoverProvider(
-      "java",
-      new PropertiesHoverProvider()
-    )
-  );
+  const selector = { language: "java", scheme: "file" } as const;
 
   context.subscriptions.push(
-    vscode.languages.registerDefinitionProvider(
-      "java",
-      new PropertiesDefinitionProvider()
-    )
+    vscode.languages.registerHoverProvider(selector, new PropertiesHoverProvider())
   );
-
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(selector, new PropertiesDefinitionProvider())
+  );
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
-      "java",
+      selector,
       new PropertiesQuickFixProvider(),
-      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+      { providedCodeActionKinds: PropertiesQuickFixProvider.providedCodeActionKinds }
     )
   );
 
-  // ✅ メッセージキー追加コマンドを登録
   context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "java-i18n-ally.addPropertyKey",
-      addPropertyKey
-    )
+    vscode.commands.registerCommand("java-message-key-navigator.addPropertyKey", addPropertyKey)
   );
 
-  // ✅ ドキュメント変更時の処理を最適化
-  let validationTimeout: NodeJS.Timeout | undefined;
+  let timeout: NodeJS.Timeout;
+  const schedule = (doc: vscode.TextDocument) => {
+    if (doc.languageId !== "java") return;
+    clearTimeout(timeout);
+    timeout = setTimeout(async () => {
+      outputChannel.appendLine("🔍 Re-validating due to document change...");
+      await validateProperties(doc, diagnostics, propertyFileGlobs);
+    }, 500);
+  };
 
-  function scheduleValidation(document: vscode.TextDocument) {
-    if (document.languageId !== "java") return;
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument(async (doc) => {
+      if (doc.languageId === "java") {
+        await validateProperties(doc, diagnostics, propertyFileGlobs);
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((e) => schedule(e.document))
+  );
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(async (ed) => {
+      if (ed?.document.languageId === "java") {
+        await validateProperties(ed.document, diagnostics, propertyFileGlobs);
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration("java-message-key-navigator.propertyFileGlobs")) {
+        const newGlobs: string[] = vscode.workspace
+          .getConfiguration("java-message-key-navigator")
+          .get("propertyFileGlobs", []);
+        outputChannel.appendLine(`🔄 Updated propertyFileGlobs: ${JSON.stringify(newGlobs)}`);
+        await loadPropertyDefinitions(newGlobs);
+      }
+    })
+  );
 
-    if (validationTimeout) clearTimeout(validationTimeout);
-
-    validationTimeout = setTimeout(() => {
-      outputChannel.appendLine(
-        "🔍 ドキュメント変更によりプロパティを再検証..."
-      );
-      validateProperties(document, diagnostics);
-    }, 500); // 500ms 待機して変更が止まったら実行
-  }
-
-  vscode.workspace.onDidOpenTextDocument((document) => {
-    if (document.languageId === "java") {
-      validateProperties(document, diagnostics);
-    }
-  });
-
-  vscode.workspace.onDidChangeTextDocument((event) => {
-    scheduleValidation(event.document);
-  });
-
-  vscode.window.onDidChangeActiveTextEditor((editor) => {
-    if (editor && editor.document.languageId === "java") {
-      validateProperties(editor.document, diagnostics);
-    }
-  });
-
-  vscode.window.showInformationMessage("Java I18N Ally が有効になりました 🚀");
+  vscode.window.showInformationMessage("Java Message Key Navigator is now active 🚀");
 }

@@ -1,46 +1,58 @@
 import * as vscode from "vscode";
 import { outputChannel } from "./outputChannel";
-import { findPropertyLocation, getCustomPatterns } from "./utils";
+import {
+  getCustomPatterns,
+  loadPropertyDefinitions,
+  findPropertyLocation,
+} from "./utils";
 
 export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
-  provideDefinition(
+  public async provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position
-  ): vscode.ProviderResult<vscode.Location> {
+  ): Promise<vscode.Location | null> {
+    outputChannel.appendLine("🔍 Executing DefinitionProvider...");
+
+    // propertyFileGlobs を読み込んでキャッシュを更新
+    const customProps = vscode.workspace
+      .getConfiguration("java-message-key-navigator")
+      .get<string[]>("propertyFileGlobs", []);
+    await loadPropertyDefinitions(customProps);
+
     const text = document.getText();
     const offset = document.offsetAt(position);
     const patterns = getCustomPatterns();
 
-    outputChannel.appendLine("🔍 DefinitionProvider を実行...");
-
     for (const regex of patterns) {
       regex.lastIndex = 0;
-      let match;
-
+      let match: RegExpExecArray | null;
       while ((match = regex.exec(text)) !== null) {
-        const key = match[1];
+        const key = match[1]?.trim();
         if (!key) continue;
 
         const start = match.index + match[0].indexOf(key);
         const end = start + key.length;
+        if (offset < start || offset > end) continue;
 
-        if (offset >= start && offset <= end) {
-          outputChannel.appendLine(`✅ 定義ジャンプ対象キー: ${key}`);
-          const location = findPropertyLocation(key);
-          if (location) {
-            outputChannel.appendLine(
-              `🚀 ジャンプ先: ${location.filePath}:${location.position.line}`
-            );
-            return new vscode.Location(
-              vscode.Uri.file(location.filePath),
-              location.position
-            );
-          } else {
-            outputChannel.appendLine(`❌ 定義なし: ${key}`);
-          }
+        outputChannel.appendLine(`✅ Jump target key: ${key}`);
+
+        // ← ここを await で呼び出す
+        const loc = await findPropertyLocation(key);
+        if (loc) {
+          outputChannel.appendLine(
+            `🚀 Jump destination: ${loc.filePath}:${loc.position.line + 1}`
+          );
+          return new vscode.Location(
+            vscode.Uri.file(loc.filePath),
+            loc.position
+          );
+        } else {
+          outputChannel.appendLine(`❌ Definition not found: ${key}`);
+          return null;
         }
       }
     }
-    return;
+
+    return null;
   }
 }
