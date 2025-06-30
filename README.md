@@ -51,7 +51,15 @@ The extension supports multiple `.properties` files specified using glob pattern
 ]
 ```
 
----
+**Placeholder Count Validation**  
+Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` value does not match the number of arguments you pass in code.  
+- 🔍 Supports array literals like `new Object[] {…}`, `new String[] {…}`, etc.  
+- 🔍 Also supports varargs calls such as  
+   ```java
+   infrastructureLogger.log("KEY", arg1, arg2, …);
+   ```  
+- ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction  
+
 
 ## ⚙️ Configuration
 
@@ -61,8 +69,8 @@ Add these to your **User** or **Workspace** `settings.json`:
 {
   // Which method calls carry your I18N keys (regex)
   "java-message-key-navigator.messageKeyExtractionPatterns": [
-    "infrastructureLogger\\.log",
-    "appLogger\\.warn"
+    "infrastructureLogger.log",
+    "appLogger.warn"
   ],
 
   // Which .properties files to read & write (glob patterns)

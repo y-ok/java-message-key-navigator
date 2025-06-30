@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.3] - 2025-06-30
+
+### Added
+- Placeholder count validation: highlights mismatches between `{0}`, `{1}`, … placeholders in `.properties` and the number of arguments passed in code.
+- Support for generic array literal calls (`new Object[] {…}`, `new String[] {…}`, etc.) and varargs calls (e.g. `infrastructureLogger.log("KEY", arg1, arg2, …)`).
+
+---
+
 ## [1.0.2] - 2025-06-30
 
 ### Added

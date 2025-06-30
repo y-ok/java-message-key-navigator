@@ -3,7 +3,7 @@
   "displayName": "Java Message Key Navigator",
   "description": "A VS Code extension to assist with Java I18N (internationalization) message management",
   "publisher": "y-ok",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
@@ -42,7 +42,8 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src",
     "bundle": "node esbuild.js",
-    "build": "cross-env NODE_NO_WARNINGS=1 npm run bundle && cross-env NODE_NO_WARNINGS=1 vsce package"
+    "build": "cross-env NODE_NO_WARNINGS=1 npm run bundle && cross-env NODE_NO_WARNINGS=1 vsce package",
+    "clean": "rimraf dist out"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -53,6 +54,7 @@
     "cross-env": "^7.0.3",
     "esbuild": "^0.25.0",
     "eslint": "^9.19.0",
+    "rimraf": "^6.0.1",
     "typescript": "^5.7.3"
   },
   "repository": {

@@ -182,3 +182,40 @@ export async function addPropertyKey(key: string, fileToUse: string) {
 
   outputChannel.appendLine(`📍 Added ${key}= to ${label} at line ${line + 1}`);
 }
+
+/** settings の propertyFileGlobs から .properties を全取得 */
+export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
+  const globs = vscode.workspace
+    .getConfiguration("java-message-key-navigator")
+    .get<string[]>("propertyFileGlobs", []);
+  const uris: vscode.Uri[] = [];
+  for (const glob of globs) {
+    const found = await vscode.workspace.findFiles(glob);
+    uris.push(...found);
+  }
+  return uris;
+}
+
+/** URI の .properties を行ごとに読み込んで返す */
+export async function readPropertiesFile(
+  uri: vscode.Uri
+): Promise<{ lines: string[] }> {
+  const doc = await vscode.workspace.openTextDocument(uri);
+  return { lines: doc.getText().split(/\r?\n/) };
+}
+
+/** キーに対応する値（右辺）を最初にヒットした .properties から返却 */
+export async function getMessageValueForKey(
+  key: string
+): Promise<string | undefined> {
+  for (const uri of await findPropertiesFiles()) {
+    const { lines } = await readPropertiesFile(uri);
+    for (const line of lines) {
+      const m = line.match(/^([^=]+)=(.*)$/);
+      if (m && m[1] === key) {
+        return m[2].trim();
+      }
+    }
+  }
+  return undefined;
+}
