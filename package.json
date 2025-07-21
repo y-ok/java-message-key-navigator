@@ -3,7 +3,7 @@
   "displayName": "Java Message Key Navigator",
   "description": "A VS Code extension to assist with Java I18N (internationalization) message management",
   "publisher": "y-ok",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
@@ -30,6 +30,11 @@
           "items": {
             "type": "string"
           },
+          "default": []
+        },
+        "java-message-key-navigator.annotationKeyExtractionPatterns": {
+          "type": "array",
+          "description": "Regex patterns to extract I18N keys from annotations.",
           "default": []
         }
       }

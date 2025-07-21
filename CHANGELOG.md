@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.4] - 2025-07-01
+
+### Added
+- Support for extracting I18N keys from annotation attributes (e.g., `start`, `end`, `exception` in `@LogStartEnd`) via the new `annotationKeyExtractionPatterns` configuration.
+
+---
+
 ## [1.0.3] - 2025-06-30
 
 ### Added

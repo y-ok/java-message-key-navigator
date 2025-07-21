@@ -7,6 +7,57 @@ import { loadPropertyDefinitions } from "./utils";
 import { initializeOutputChannel, outputChannel } from "./outputChannel";
 import { MessageKeyCompletionProvider } from "./CompletionProvider";
 import { validatePlaceholders } from "./diagnostic";
+import { isExcludedFile } from "./utils";
+
+class FilteredHoverProvider implements vscode.HoverProvider {
+  constructor(private base: vscode.HoverProvider) {}
+  provideHover(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken
+  ): vscode.ProviderResult<vscode.Hover> {
+    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    return this.base.provideHover(document, position, token);
+  }
+}
+
+class FilteredDefinitionProvider implements vscode.DefinitionProvider {
+  constructor(private base: vscode.DefinitionProvider) {}
+  provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken
+  ): vscode.ProviderResult<vscode.Definition | vscode.LocationLink[]> {
+    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    return this.base.provideDefinition(document, position, token);
+  }
+}
+
+class FilteredQuickFixProvider implements vscode.CodeActionProvider {
+  constructor(private base: vscode.CodeActionProvider) {}
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+    context: vscode.CodeActionContext,
+    token: vscode.CancellationToken
+  ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
+    if (isExcludedFile(document.uri.fsPath)) return [];
+    return this.base.provideCodeActions(document, range, context, token);
+  }
+}
+
+class FilteredCompletionProvider implements vscode.CompletionItemProvider {
+  constructor(private base: vscode.CompletionItemProvider) {}
+  provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+    context: vscode.CompletionContext
+  ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
+    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    return this.base.provideCompletionItems(document, position, token, context);
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   initializeOutputChannel();
@@ -25,15 +76,15 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
       selector,
-      new PropertiesHoverProvider()
+      new FilteredHoverProvider(new PropertiesHoverProvider())
     ),
     vscode.languages.registerDefinitionProvider(
       selector,
-      new PropertiesDefinitionProvider()
+      new FilteredDefinitionProvider(new PropertiesDefinitionProvider())
     ),
     vscode.languages.registerCodeActionsProvider(
       selector,
-      new PropertiesQuickFixProvider(),
+      new FilteredQuickFixProvider(new PropertiesQuickFixProvider()),
       {
         providedCodeActionKinds:
           PropertiesQuickFixProvider.providedCodeActionKinds,
@@ -41,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
     ),
     vscode.languages.registerCompletionItemProvider(
       selector,
-      new MessageKeyCompletionProvider(),
+      new FilteredCompletionProvider(new MessageKeyCompletionProvider()),
       '"'
     )
   );
@@ -110,7 +161,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // 5. properties と placeholders を同時に検証するスケジューラ
   let validationTimeout: NodeJS.Timeout;
   const scheduleAll = (doc: vscode.TextDocument) => {
-    if (doc.languageId !== "java") return;
+    // Java 以外 or 除外パス (.git, target, src/test など) は無視
+    if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
+       return;
+    }
     clearTimeout(validationTimeout);
     validationTimeout = setTimeout(async () => {
       outputChannel.appendLine("🔍 Re-validating properties and placeholders…");

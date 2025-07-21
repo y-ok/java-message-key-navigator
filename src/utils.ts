@@ -71,17 +71,30 @@ export function getCustomPatterns(): RegExp[] {
   const config = vscode.workspace.getConfiguration(
     "java-message-key-navigator"
   );
-  const messageKeyExtractionPatterns = config.get<string[]>(
+
+  // 1) 既存のメソッド呼び出し用パターンを組み立て
+  const methodPatterns = config.get<string[]>(
     "messageKeyExtractionPatterns",
     []
   );
-  const methods = [...messageKeyExtractionPatterns, "messageSource.getMessage"];
-  return methods.map((method) => {
-    const esc = method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(?:[\\w$]+\\.)?${esc}\\(\\s*['"]([^'"]+)['"]`, "g");
-    outputChannel.appendLine(`🔍 pattern: ${re}`);
-    return re;
-  });
+  const invocationRegexes = [...methodPatterns, "messageSource.getMessage"].map(
+    (method) => {
+      const esc = method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(?:[\\w$]+\\.)?${esc}\\(\\s*['"]([^'"]+)['"]`, "g");
+    }
+  );
+
+  // 2) アノテーション用の正規表現パターンをそのままコンパイル
+  const annotationPatterns = config.get<string[]>(
+    "annotationKeyExtractionPatterns",
+    []
+  );
+  const annotationRegexes = annotationPatterns.map(
+    (pat) => new RegExp(pat, "g")
+  );
+
+  // 3) 両者を結合して返却
+  return [...invocationRegexes, ...annotationRegexes];
 }
 
 /**
@@ -218,4 +231,26 @@ export async function getMessageValueForKey(
     }
   }
   return undefined;
+}
+
+/**
+ * 指定ファイルパスが、チェック対象外ディレクトリ配下かどうかを判定する
+ * @param filePath 絶対パス or ワークスペースルートからのパス
+ */
+export function isExcludedFile(filePath: string): boolean {
+    const excludedDirs = [
+        '/.git/',
+        '/node_modules/',
+        '/target/',
+        '/build/',
+        '/out/',
+        '/dist/',
+        '/tmp/',
+        '/temp/',
+        '/src/test/',
+        '/src/generated/',
+    ];
+    // Windowsでも動作するようパス区切りをnormalize
+    const normalized = filePath.replace(/\\/g, '/');
+    return excludedDirs.some(dir => normalized.includes(dir));
 }

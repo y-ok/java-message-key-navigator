@@ -60,6 +60,17 @@ Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` 
    ```  
 - ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction  
 
+**Annotation Key Extraction**  
+Define regular-expression patterns to pull keys out of annotation attributes. For example, to treat the `start`, `end` and `exception` values in your
+`@LogStartEnd(start="…", end="…", exception="…")` annotation as message keys:
+
+```jsonc
+"java-message-key-navigator.annotationKeyExtractionPatterns": [
+  "@LogStartEnd\\(\\s*start\\s*=\\s*\"([^\\\"]+)\"",
+  "@LogStartEnd\\(.*?end\\s*=\\s*\"([^\\\"]+)\"",
+  "@LogStartEnd\\(.*?exception\\s*=\\s*\"([^\\\"]+)\""
+]
+```
 
 ## ⚙️ Configuration
 
@@ -78,13 +89,21 @@ Add these to your **User** or **Workspace** `settings.json`:
     "src/main/resources/message*.properties",
     "src/main/resources/validation/**/*.properties"
   ]
+
+  // Patterns to extract I18N keys from @LogStartEnd(start="…", end="…", exception="…") annotation
+  "java-message-key-navigator.annotationKeyExtractionPatterns": [
+    "@LogStartEnd\\(\\s*start\\s*=\\s*\"([^\\\"]+)\"",
+    "@LogStartEnd\\(.*?end\\s*=\\s*\"([^\\\"]+)\"",
+    "@LogStartEnd\\(.*?exception\\s*=\\s*\"([^\\\"]+)\""
+  ]
 }
 ```
 
-| Setting                                | Description                                                                         |
-| -------------------------------------- | ----------------------------------------------------------------------------------- |
-| `messageKeyExtractionPatterns` (array) | Regex patterns for method calls to scan for keys                                    |
-| `propertyFileGlobs` (array)            | Glob patterns for your `.properties` files to include in look-up and auto-insertion |
+| Setting                                   | Description                                                                                                    |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `messageKeyExtractionPatterns` (array)    | Regex patterns for method calls to scan for keys                                                               |
+| `annotationKeyExtractionPatterns` (array) | Regex patterns for annotations to scan for keys (e.g. values of `start`, `end`, `exception` in `@LogStartEnd`) |
+| `propertyFileGlobs` (array)               | Glob patterns for your `.properties` files to include in look-up and auto-insertion                            |
 
 ---
 
