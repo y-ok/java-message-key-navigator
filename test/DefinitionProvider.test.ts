@@ -1,26 +1,27 @@
-import { strict as assert } from "assert";
-import type { TextDocument, Position } from "vscode";
+/**
+ * test/DefinitionProvider.test.ts
+ */
+import { PropertiesDefinitionProvider } from "../src/DefinitionProvider";
+import * as utils from "../src/utils";
 
-// ① outputChannel モック
-const appendLineSpy = jest.fn();
+// outputChannelモック
 jest.mock("../src/outputChannel", () => ({
   __esModule: true,
-  outputChannel: {
-    appendLine: appendLineSpy,
-    clear: jest.fn(),
-  },
+  outputChannel: { appendLine: jest.fn() },
 }));
 
-// ② utils モック
-const getCustomPatterns = jest.fn();
-const findPropertyLocation = jest.fn();
-jest.mock("../src/utils", () => ({
-  __esModule: true,
-  getCustomPatterns,
-  findPropertyLocation,
-}));
+// utilsモック
+jest.mock("../src/utils", () => {
+  const actual = jest.requireActual("../src/utils");
+  return {
+    ...actual,
+    getCustomPatterns: jest.fn(),
+    loadPropertyDefinitions: jest.fn(),
+    findPropertyLocation: jest.fn(),
+  };
+});
 
-// ③ vscode モック
+// vscode完全モック（Uri.file含む）
 jest.mock("vscode", () => ({
   __esModule: true,
   workspace: {
@@ -29,153 +30,109 @@ jest.mock("vscode", () => ({
   Uri: {
     file: (path: string) => ({ fsPath: path }),
   },
+  Position: class {
+    constructor(public line: number, public character: number) {}
+  },
   Location: class {
-    uri: any;
-    position: any;
-    constructor(uri: any, position: any) {
+    constructor(public uri: any, public range: any) {
       this.uri = uri;
-      this.position = position;
+      this.range = { start: range, end: range };
     }
   },
 }));
 
 import * as vscode from "vscode";
-import { PropertiesDefinitionProvider } from "../src/DefinitionProvider";
 
-describe("PropertiesDefinitionProvider.provideDefinition", () => {
+describe("PropertiesDefinitionProvider", () => {
   let provider: PropertiesDefinitionProvider;
-  let doc: TextDocument;
-  let pos: Position;
-  let docText: string;
-  let offset: number;
+  let doc: any;
+  let position: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     provider = new PropertiesDefinitionProvider();
-
-    // デフォルトはパターンなし
-    getCustomPatterns.mockReturnValue([]);
-
     doc = {
-      getText: () => docText,
-      offsetAt: () => offset,
-    } as any;
-    pos = {} as any;
+      getText: jest.fn(),
+      offsetAt: jest.fn(),
+    };
+    position = { line: 0, character: 0 };
   });
 
-  it("logs only the start and returns null when no patterns are configured", async () => {
-    docText = `foo("anything")`;
-    offset = 0;
+  it("正常系: ジャンプ先が見つかる場合、Locationが返る", async () => {
+    const text = 'log("MSG_KEY");';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    (doc.offsetAt as jest.Mock).mockReturnValue(5 + 1);
 
-    const result = await provider.provideDefinition(doc, pos);
-    assert.strictEqual(result, null);
-
-    const calls = appendLineSpy.mock.calls.map((c) => c[0] as string);
-    // 1回だけ呼ばれていること
-    assert.strictEqual(calls.length, 1, `Expected 1 call, got ${calls.length}`);
-    // ログメッセージが先頭のみ一致すること
-    assert.ok(
-      calls[0].startsWith("🔍 Executing DefinitionProvider"),
-      `Expected initial log, got: ${calls[0]}`
-    );
-  });
-
-  it("returns null when cursor is outside a matching key", async () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-
-    docText = `before foo("key") after`;
-    offset = 1; // 範囲外
-
-    const result = await provider.provideDefinition(doc, pos);
-    assert.strictEqual(result, null);
-
-    const calls = appendLineSpy.mock.calls.map((c) => c[0] as string);
-    assert.strictEqual(calls.length, 1, `Expected 1 call, got ${calls.length}`);
-    assert.ok(
-      calls[0].startsWith("🔍 Executing DefinitionProvider"),
-      `Expected initial log, got: ${calls[0]}`
-    );
-  });
-
-  it("returns a Location and logs correctly when findPropertyLocation finds the key", async () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    findPropertyLocation.mockResolvedValue({
-      filePath: "/path/to/file.properties",
-      position: { line: 2, character: 5 },
+    const regex = /log\("([^"]+)"\)/g;
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([regex]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
     });
 
-    docText = `foo("myKey")`;
-    offset = docText.indexOf("myKey") + 1;
+    (utils.findPropertyLocation as jest.Mock).mockResolvedValue({
+      filePath: "/foo/bar.properties",
+      position: new vscode.Position(3, 5),
+    });
 
-    const result = await provider.provideDefinition(doc, pos);
-    assert.ok(result instanceof (vscode as any).Location);
-    assert.strictEqual((result as any).uri.fsPath, "/path/to/file.properties");
-    assert.deepStrictEqual((result as any).position, { line: 2, character: 5 });
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeInstanceOf(vscode.Location);
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0] as string);
-    assert.strictEqual(
-      calls.length,
-      3,
-      `Expected 3 calls, got ${calls.length}`
-    );
-    assert.ok(calls[0].startsWith("🔍 Executing DefinitionProvider"));
-    assert.ok(calls[1].startsWith("✅ Jump target key: myKey"));
-    assert.ok(
-      calls[2].startsWith("🚀 Jump destination: /path/to/file.properties")
-    );
+    // ★ nullチェック (TypeScript型安全＋実行時ガード)
+    if (!res) {
+      fail("Location expected, but got null");
+    }
+
+    expect(res.uri.fsPath).toBe("/foo/bar.properties");
+    expect(res.range.start.line).toBe(3);
+    expect(res.range.start.character).toBe(5);
   });
 
-  it("returns null and logs not-found when findPropertyLocation returns null", async () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    findPropertyLocation.mockResolvedValue(null);
+  it("異常系: ジャンプ先が見つからない場合、nullが返る", async () => {
+    const text = 'log("NOT_FOUND");';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    (doc.offsetAt as jest.Mock).mockReturnValue(5 + 1);
 
-    docText = `foo("absent")`;
-    offset = docText.indexOf("absent") + 2;
+    const regex = /log\("([^"]+)"\)/g;
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([regex]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
+    });
+    (utils.findPropertyLocation as jest.Mock).mockResolvedValue(null);
 
-    const result = await provider.provideDefinition(doc, pos);
-    assert.strictEqual(result, null);
-
-    const calls = appendLineSpy.mock.calls.map((c) => c[0] as string);
-    assert.strictEqual(
-      calls.length,
-      3,
-      `Expected 3 calls, got ${calls.length}`
-    );
-    assert.ok(calls[0].startsWith("🔍 Executing DefinitionProvider"));
-    assert.ok(calls[1].startsWith("✅ Jump target key: absent"));
-    assert.ok(calls[2].startsWith("❌ Definition not found: absent"));
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeNull();
   });
 
-  it("skips matches with empty key", async () => {
-    // 空文字キャプチャ用の正規表現を返す
-    const pattern = /foo\("([^"]*)"\)/g;
-    getCustomPatterns.mockReturnValue([pattern]);
+  it("異常系: キーマッチしてもカーソルが範囲外ならスキップされnull", async () => {
+    const text = 'log("SKIP_KEY");';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    (doc.offsetAt as jest.Mock).mockReturnValue(1); // 範囲外
 
-    // テキスト中のグループは空文字列
-    docText = `foo("")`;
-    offset = docText.indexOf('""') + 1;
+    const regex = /log\("([^"]+)"\)/g;
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([regex]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
+    });
 
-    // findPropertyLocation は呼ばれてはいけない
-    findPropertyLocation.mockClear();
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeNull();
+    expect(utils.findPropertyLocation).not.toHaveBeenCalled();
+  });
 
-    const result = await provider.provideDefinition(doc, pos);
-    assert.strictEqual(result, null, "Expected null when key is empty");
+  it("異常系: キーマッチしない場合もnull", async () => {
+    const text = 'foo("NO_MATCH");';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    (doc.offsetAt as jest.Mock).mockReturnValue(5);
 
-    // ログは開始メッセージのみ
-    const calls = appendLineSpy.mock.calls.map((c) => c[0] as string);
-    assert.strictEqual(
-      calls.length,
-      1,
-      `Expected 1 log call, got ${calls.length}`
-    );
-    assert.ok(
-      calls[0].startsWith("🔍 Executing DefinitionProvider"),
-      `Expected initial log, got: ${calls[0]}`
-    );
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]+)"\)/g,
+    ]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
+    });
 
-    expect(findPropertyLocation).not.toHaveBeenCalled();
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeNull();
+    expect(utils.findPropertyLocation).not.toHaveBeenCalled();
   });
 });

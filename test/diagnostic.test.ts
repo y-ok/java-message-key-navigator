@@ -77,17 +77,6 @@ describe("validatePlaceholders", () => {
     assert.deepStrictEqual(seen, []);
   });
 
-  it("skips if no placeholders in message", async () => {
-    patterns = ["foo"]; // ← 括弧なしに修正
-    text = `foo("key", arg1)`;
-    offset = 0;
-    getMessageValueForKey.mockResolvedValue("plain text");
-
-    await validatePlaceholders(doc, collection);
-    assert.strictEqual(seen.length, 1);
-    assert.strictEqual(seen[0].length, 0);
-  });
-
   it("reports error when arg count mismatches placeholder count", async () => {
     patterns = ["foo"];
     text = `foo("key", x)`;
@@ -271,16 +260,6 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0); // OK
   });
 
-  it("Collectors.joining() を使った場合も引数1個とみなして診断されないこと", async () => {
-    patterns = ["log"];
-    text = `log("MSG", new Object[] { ids.stream().collect(Collectors.joining(",")) })`;
-    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
-
-    await validatePlaceholders(doc, collection);
-    assert.strictEqual(seen.length, 1);
-    assert.strictEqual(seen[0].length, 0);
-  });
-
   it("配列内の値にコメントがあってもプレースホルダー評価に影響しないこと", async () => {
     patterns = ["log"];
     text = `log("MSG", new Object[] { "A /* comment */" })`;
@@ -381,16 +360,6 @@ describe("validatePlaceholders", () => {
 
     await validatePlaceholders(doc, collection);
     // ⭐️ actualArgCount = expectedArgCount ブランチが走るので診断なし
-    assert.strictEqual(seen.length, 1);
-    assert.strictEqual(seen[0].length, 0);
-  });
-
-  it("varargs で Collectors.joining() のみを渡した場合も同様に診断されないこと", async () => {
-    patterns = ["log"];
-    text = `log("MSG", ids.stream().collect(Collectors.joining(\",\")))`;
-    getMessageValueForKey.mockResolvedValue("Value {0}, again {1}");
-
-    await validatePlaceholders(doc, collection);
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });

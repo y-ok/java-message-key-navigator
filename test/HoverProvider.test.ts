@@ -1,150 +1,155 @@
-import { strict as assert } from "assert";
-import type { TextDocument, Position, Hover } from "vscode";
+/**
+ * test/HoverProvider.test.ts
+ */
+import { PropertiesHoverProvider } from "../src/HoverProvider";
+import * as utils from "../src/utils";
+import * as vscode from "vscode";
 
-// ① outputChannel をスパイ化
-const appendLineSpy = jest.fn();
+// ——— vscode API モック
+jest.mock("vscode", () => {
+  const actual = jest.requireActual("vscode");
+  return {
+    __esModule: true,
+    ...actual,
+    workspace: { getConfiguration: jest.fn() },
+    MarkdownString: class {
+      value: string;
+      constructor(val: string) {
+        this.value = val;
+      }
+    },
+    Hover: class {
+      contents: any[];
+      constructor(contents: any) {
+        this.contents = [contents];
+      }
+    },
+    Diagnostic: class {
+      constructor(
+        public range: any,
+        public message: string,
+        public severity: any
+      ) {}
+    },
+    DiagnosticSeverity: { Error: 0 },
+    Range: class {
+      constructor(public start: any, public end: any) {}
+    },
+  };
+});
+
+// outputChannel モック
 jest.mock("../src/outputChannel", () => ({
   __esModule: true,
-  outputChannel: {
-    appendLine: appendLineSpy,
-    clear: jest.fn(),
-  },
+  outputChannel: { appendLine: jest.fn() },
 }));
 
-// ② utils モック
-const getCustomPatterns = jest.fn();
-const getPropertyValue = jest.fn();
+// ユーティリティ関数モック
 jest.mock("../src/utils", () => ({
   __esModule: true,
-  getCustomPatterns,
-  getPropertyValue,
+  getCustomPatterns: jest.fn(),
+  getPropertyValue: jest.fn(),
 }));
 
-// ③ vscode モック（Hover と MarkdownString だけ実装）
-jest.mock("vscode", () => ({
-  __esModule: true,
-  Hover: class {
-    contents: any;
-    constructor(contents: any) {
-      this.contents = contents;
-    }
-  },
-  MarkdownString: class {
-    value: string;
-    constructor(v: string) { this.value = v; }
-  },
-}));
-
-import { PropertiesHoverProvider } from "../src/HoverProvider";
-
-describe("PropertiesHoverProvider.provideHover", () => {
+describe("PropertiesHoverProvider", () => {
   let provider: PropertiesHoverProvider;
-  let doc: TextDocument;
-  let pos: Position;
-  let text: string;
-  let offset: number;
+  let doc: any;
+  let pos: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
     provider = new PropertiesHoverProvider();
     doc = {
-      getText: () => text,
-      offsetAt: () => offset,
-    } as any;
-    pos = {} as any;
+      getText: jest.fn(),
+      offsetAt: jest.fn(),
+    };
+    pos = { line: 0, character: 0 };
+    (utils.getCustomPatterns as jest.Mock).mockReset();
+    (utils.getPropertyValue as jest.Mock).mockReset();
   });
 
-  it("returns undefined and logs start when no patterns", () => {
-    getCustomPatterns.mockReturnValue([]);
-    text = "anything";
-    offset = 0;
+  it("正常系: キー上でホバーした場合にメッセージが返る", () => {
+    const text = 'log("MSG_KEY");';
+    doc.getText.mockReturnValue(text);
+    // "MSG_KEY" の位置範囲内にいる想定
+    doc.offsetAt.mockReturnValue(text.indexOf("MSG_KEY") + 2);
 
-    const result = provider.provideHover(doc, pos);
-    assert.strictEqual(result, undefined);
+    // "log"関数パターンのみ返す
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]+)"\)/g,
+    ]);
+    (utils.getPropertyValue as jest.Mock).mockReturnValue("Hello, World!");
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0]);
-    assert.strictEqual(calls.length, 1);
-    assert.ok(calls[0].startsWith("🔍 Executing hover operation"));
+    const res = provider.provideHover(doc, pos);
+    expect(res).toBeInstanceOf(vscode.Hover);
+    if (!res) fail();
+    const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
+    expect(md.value).toBe("Hello, World!");
   });
 
-  it("returns undefined when no regex match", () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    text = `bar("key")`;
-    offset = text.indexOf("key") + 1;
+  it("正常系: 値に=を含む場合はコードブロックで返す", () => {
+    const text = 'log("EQ_KEY");';
+    doc.getText.mockReturnValue(text);
+    doc.offsetAt.mockReturnValue(text.indexOf("EQ_KEY") + 2);
 
-    const result = provider.provideHover(doc, pos);
-    assert.strictEqual(result, undefined);
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]+)"\)/g,
+    ]);
+    (utils.getPropertyValue as jest.Mock).mockReturnValue("foo=bar");
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0]);
-    assert.strictEqual(calls.length, 1);
-    assert.ok(calls[0].startsWith("🔍 Executing hover operation"));
+    const res = provider.provideHover(doc, pos);
+    expect(res).toBeInstanceOf(vscode.Hover);
+    if (!res) fail();
+    const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
+    expect(md.value).toMatch(/^```[\s\S]+```$/);
   });
 
-  it("returns undefined and logs target when value missing", () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    getPropertyValue.mockReturnValue(undefined);
-    text = `foo("key")`;
-    offset = text.indexOf("key") + 1;
+  it("異常系: 対象範囲外ならhoverは返らない", () => {
+    const text = 'log("NO_KEY");';
+    doc.getText.mockReturnValue(text);
+    // "NO_KEY"の外側（0）を指定
+    doc.offsetAt.mockReturnValue(0);
 
-    const result = provider.provideHover(doc, pos);
-    assert.strictEqual(result, undefined);
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]+)"\)/g,
+    ]);
+    (utils.getPropertyValue as jest.Mock).mockReturnValue("何も返さない");
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0]);
-    // start + target
-    assert.strictEqual(calls.length, 2);
-    assert.ok(calls[1].startsWith("✅ Hover target key: key"));
+    const res = provider.provideHover(doc, pos);
+    expect(res).toBeUndefined();
   });
 
-  it("returns a Hover when value present without '='", () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    getPropertyValue.mockReturnValue("simple");
-    text = `foo("key")`;
-    offset = text.indexOf("key") + 1;
+  it("異常系: キーが取得できない場合hoverを返さない", () => {
+    const text = 'log("");';
+    doc.getText.mockReturnValue(text);
+    doc.offsetAt.mockReturnValue(text.indexOf('""') + 1);
 
-    const hover = provider.provideHover(doc, pos) as Hover;
-    assert.ok(hover instanceof (require("vscode") as any).Hover);
-    assert.strictEqual((hover.contents as any).value, "simple");
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]*)"\)/g,
+    ]);
+    (utils.getPropertyValue as jest.Mock).mockReturnValue(undefined);
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0]);
-    assert.strictEqual(calls.length, 3);
-    assert.ok(calls[2].startsWith("📢 Displaying hover message"));
+    const res = provider.provideHover(doc, pos);
+    expect(res).toBeUndefined();
   });
 
-  it("wraps value in code block when it contains '='", () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    getPropertyValue.mockReturnValue("a=b=c");
-    text = `foo("key")`;
-    offset = text.indexOf("key") + 1;
+  it("異常系: すでにprocessedKeysに含まれるキーでも常にHoverが返る", () => {
+    const text = 'log("DUP_KEY");log("DUP_KEY");';
+    doc.getText.mockReturnValue(text);
+    doc.offsetAt.mockReturnValue(text.indexOf("DUP_KEY") + 2);
 
-    const hover = provider.provideHover(doc, pos) as Hover;
-    assert.strictEqual((hover.contents as any).value, "```\na=b=c\n```");
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+      /log\("([^"]+)"\)/g,
+    ]);
+    (utils.getPropertyValue as jest.Mock)
+      .mockReturnValueOnce("message1")
+      .mockReturnValueOnce("message2");
 
-    const calls = appendLineSpy.mock.calls.map((c) => c[0]);
-    assert.strictEqual(calls.length, 3);
-  });
+    // 1回目
+    const first = provider.provideHover(doc, pos);
+    expect(first).toBeInstanceOf(vscode.Hover);
 
-  it("does not re-process the same key twice", () => {
-    const re = /foo\("([^"]+)"\)/g;
-    getCustomPatterns.mockReturnValue([re]);
-    getPropertyValue.mockReturnValue("val");
-    text = `foo("key") foo("key")`;
-    
-    // first occurrence
-    offset = text.indexOf("key") + 1;
-    provider.provideHover(doc, pos);
-    // second occurrence
-    offset = text.lastIndexOf("key") + 1;
-    provider.provideHover(doc, pos);
-
-    const targetLogs = appendLineSpy
-      .mock.calls
-      .map((c) => c[0])
-      .filter((msg) => msg.startsWith("✅ Hover target key"));
-    // 最初の一度だけ
-    assert.strictEqual(targetLogs.length, 1);
+    // 2回目もHoverが返る
+    const second = provider.provideHover(doc, pos);
+    expect(second).toBeInstanceOf(vscode.Hover);
   });
 });

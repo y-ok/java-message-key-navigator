@@ -35,14 +35,30 @@ class FilteredDefinitionProvider implements vscode.DefinitionProvider {
 
 class FilteredQuickFixProvider implements vscode.CodeActionProvider {
   constructor(private base: vscode.CodeActionProvider) {}
+
+  // Overloads to match VSCode CodeActionProvider signature
   provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range,
     context: vscode.CodeActionContext,
     token: vscode.CancellationToken
+  ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]>;
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Selection,
+    context: vscode.CodeActionContext,
+    token: vscode.CancellationToken
+  ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]>;
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext,
+    token: vscode.CancellationToken
   ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
-    if (isExcludedFile(document.uri.fsPath)) return [];
-    return this.base.provideCodeActions(document, range, context, token);
+    if (isExcludedFile(document.uri.fsPath)) {
+      return [];
+    }
+    return this.base.provideCodeActions(document, range as any, context, token);
   }
 }
 
@@ -59,19 +75,19 @@ class FilteredCompletionProvider implements vscode.CompletionItemProvider {
   }
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+export async function activate(
+  context: vscode.ExtensionContext & { secrets?: any }
+) {
   initializeOutputChannel();
-  console.log("✅ [Java I18N Ally] activate() が呼ばれました");
 
-  // 1. settings から globs を取得して既存定義をロード
-  const propertyFileGlobs: string[] = vscode.workspace
-    .getConfiguration("java-message-key-navigator")
-    .get("propertyFileGlobs", []);
+  const propertyFileGlobs: string[] =
+    vscode.workspace
+      .getConfiguration("java-message-key-navigator")
+      .get("propertyFileGlobs", []) ?? [];
   await loadPropertyDefinitions(propertyFileGlobs);
 
   outputChannel.appendLine("✅ Java Message Key Navigator is now active");
 
-  // 2. Hover/Definition/QuickFix/Completion Providers 登録
   const selector = { language: "java", scheme: "file" } as const;
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
@@ -97,7 +113,6 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 3. addPropertyKey コマンド登録
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "java-message-key-navigator.addPropertyKey",
@@ -151,44 +166,40 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 4. DiagnosticCollection を 2つ 作成
   const propDiagnostics =
     vscode.languages.createDiagnosticCollection("messages");
   const phDiagnostics =
     vscode.languages.createDiagnosticCollection("placeholders");
   context.subscriptions.push(propDiagnostics, phDiagnostics);
 
-  // 5. properties と placeholders を同時に検証するスケジューラ
   let validationTimeout: NodeJS.Timeout;
   const scheduleAll = (doc: vscode.TextDocument) => {
-    // Java 以外 or 除外パス (.git, target, src/test など) は無視
     if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
-       return;
+      return;
     }
     clearTimeout(validationTimeout);
     validationTimeout = setTimeout(async () => {
-      outputChannel.appendLine("🔍 Re-validating properties and placeholders…");
+      outputChannel.appendLine(
+        "🔍 Re-validating properties and placeholders…"
+      );
       await validateProperties(doc, propDiagnostics, propertyFileGlobs);
       await validatePlaceholders(doc, phDiagnostics);
     }, 500);
   };
 
-  // 6. ドキュメント／エディタ切替イベントにスケジューラを登録
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(scheduleAll),
     vscode.workspace.onDidChangeTextDocument((e) => scheduleAll(e.document)),
     vscode.workspace.onDidSaveTextDocument(scheduleAll),
-    vscode.window.onDidChangeActiveTextEditor(
-      (ed) => ed?.document && scheduleAll(ed.document)
+    vscode.window.onDidChangeActiveTextEditor((ed) =>
+      ed?.document && scheduleAll(ed.document)
     )
   );
 
-  // 7. 有効化時にアクティブなエディタを一度検証
   if (vscode.window.activeTextEditor) {
     scheduleAll(vscode.window.activeTextEditor.document);
   }
 
-  // 8. 起動完了メッセージ（任意）
   vscode.window.showInformationMessage(
     "Java Message Key Navigator is now active 🚀"
   );
