@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.5] - 2025-07-27
+
+### Changed
+- Migrated to Jest for all unit testing; removed Mocha legacy config.
+- Added comprehensive unit tests with full coverage for all major modules:
+  - utils, PropertyValidator, diagnostic, CompletionProvider, HoverProvider, DefinitionProvider, PropertiesQuickFixProvider, outputChannel, and extension entrypoint.
+- All VS Code APIs and extension dependencies are fully mocked for reliable, isolated testing.
+- Split TypeScript configuration into `tsconfig.build.json` (build) and `tsconfig.test.json` (test).
+- Updated `.gitignore` to include `coverage/` and `package-lock.json`.
+- Updated `package.json`:
+  - Improved test and build scripts.
+  - Added/updated relevant devDependencies for Jest and testing support.
+  - Enhanced `clean` script to remove all generated files.
+- Improved output channel initialization formatting and robustness.
+- Improved development DX: all core logic now thoroughly unit tested and CI-ready.
+- Version bump: 1.0.5
+
+---
+
 ## [1.0.4] - 2025-07-01
 
 ### Added
