@@ -3,13 +3,11 @@ out/
 dist/
 node_modules/
 .vscode-test/
+coverage/
 
 # 一時ファイル & 不要なファイル
 *.vsix
 .DS_Store
-
-# ソースコード関連 (バンドル後に不要)
-test/
 
 # Git & CI/CD 関連
 .git/
@@ -18,3 +16,5 @@ test/
 
 # 開発設定ファイル
 .eslintrc.js
+
+package-lock.json

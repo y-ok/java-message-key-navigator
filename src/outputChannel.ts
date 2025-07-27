@@ -11,7 +11,9 @@ export function initializeOutputChannel() {
   if (outputChannel) {
     outputChannel.clear();
   } else {
-    outputChannel = vscode.window.createOutputChannel("Java Message Key Navigator");
+    outputChannel = vscode.window.createOutputChannel(
+      "Java Message Key Navigator"
+    );
   }
 
   // タブは自動で開かない
