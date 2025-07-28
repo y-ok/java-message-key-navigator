@@ -139,7 +139,7 @@ export async function findPropertyLocation(
  * 指定キーを適切な位置に挿入＆カーソル移動します。
  */
 export async function addPropertyKey(key: string, fileToUse: string) {
-  // 1) 元のソースURIをキャプチャ
+  // 1) 元のソースURIをキャプチャ（使用しない場合は省略可）
   const sourceUri = vscode.window.activeTextEditor?.document.uri;
 
   // 2) glob→実ファイル解決
@@ -159,12 +159,12 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     return;
   }
 
-  // 3) ファイルを読み込んで行とキーを取得
+  // 3) ファイルを読み込んで行を取得
   const raw = fs.readFileSync(targetPath, "utf-8");
   const allLines = raw.split(/\r?\n/);
   const label = path.basename(targetPath);
 
-  // 空行・コメント除外してキー一覧
+  // 空行・コメントを除外して既存キー一覧を取得
   const keys = allLines
     .map((line) => line.split("=", 1)[0].trim())
     .filter((k) => k && !k.startsWith("#"));
@@ -175,7 +175,7 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     return;
   }
 
-  // --- 5. 行番号マップを作成 ---
+  // --- 5) 挿入位置を決定するためのキー→行番号マップを作成 ---
   const keyLineMap = new Map<string, number>();
   allLines.forEach((line, idx) => {
     const rawKey = line.split("=", 1)[0].trim();
@@ -184,60 +184,46 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     }
   });
 
-  // ■ここからデバッグ出力■
-  outputChannel.appendLine(
-    `🔍 allLines (${allLines.length}):\n${allLines.join(os.EOL)}`
-  );
-  outputChannel.appendLine(`🔍 keys: ${JSON.stringify(keys)}`);
-  // ソート後の一覧
+  // ソートした全キー＋新規キー
   const allKeysSorted = [...keys, key].sort((a, b) => a.localeCompare(b));
-  outputChannel.appendLine(
-    `🔍 allKeysSorted: ${JSON.stringify(allKeysSorted)}`
-  );
-  outputChannel.appendLine(
-    `🔍 keyLineMap: ${JSON.stringify(Array.from(keyLineMap.entries()))}`
-  );
-  // ■ここまでデバッグ出力■
-
-  // --- 6. 挿入位置を決定：ソート順で nextKey の行番号 or 末尾 ---
   const newIdx = allKeysSorted.indexOf(key);
+
   let insertIdx: number;
   if (newIdx === allKeysSorted.length - 1) {
+    // 新キーが最後ならファイル末尾
     insertIdx = allLines.length;
   } else {
+    // 新キーの次のキーの行番号
     const nextKey = allKeysSorted[newIdx + 1];
-    outputChannel.appendLine(`🔍 nextKey: ${nextKey}`);
     insertIdx = keyLineMap.get(nextKey) ?? allLines.length;
   }
 
-  // 7) 配列に挿入 & 保存
+  // 6) 配列に挿入 & 保存
   allLines.splice(insertIdx, 0, `${key}=`);
   fs.writeFileSync(targetPath, allLines.join(os.EOL), "utf-8");
   vscode.window.showInformationMessage(
     `✅ Added "${key}" to ${label}! (line ${insertIdx + 1})`
   );
 
-  // 8) キャッシュ更新
+  // 7) キャッシュ更新
   await loadPropertyDefinitions([targetPath]);
 
-  // 9) 別タブでソース → プロパティを開く（プレビュー抑制）
-  const propertyUri = vscode.Uri.file(targetPath);
-  await vscode.window.showTextDocument(propertyUri, {
-    viewColumn: 1,
-    preserveFocus: false,
-    preview: false,
-  });
-
+  // 8) プロパティファイルを１画面で開く
   const propDoc = await vscode.workspace.openTextDocument(targetPath);
   const propEd = await vscode.window.showTextDocument(propDoc, {
-    viewColumn: 2,
+    viewColumn: vscode.ViewColumn.One,
     preserveFocus: false,
     preview: false,
   });
 
-  // 10) 挿入行へカーソル
+  // 9) 挿入行の "=" 右側へカーソルを移動
   if (propEd) {
-    const pos = new vscode.Position(insertIdx, key.length + 1);
+    // VSCode API で正確に行を取得
+    const line = propDoc.lineAt(insertIdx);
+    // 行テキスト中の "=" の位置を探し、見つかればその右、なければ行末
+    const eqIdx = line.text.indexOf("=");
+    const eqPos = eqIdx >= 0 ? eqIdx + 1 : line.text.length;
+    const pos = new vscode.Position(insertIdx, eqPos);
     propEd.selection = new vscode.Selection(pos, pos);
     propEd.revealRange(new vscode.Range(pos, pos));
   }
@@ -246,6 +232,7 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     `📍 Added ${key}= to ${label} at line ${insertIdx + 1}`
   );
 }
+
 /** settings の propertyFileGlobs から .properties を全取得 */
 export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
   const globs = vscode.workspace

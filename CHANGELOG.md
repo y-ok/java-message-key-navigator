@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.7] - 2025-07-29
+
+### Changed
+- Bumped extension version to **1.0.7**.  
+- Cleaned up and clarified step comments in `utils.addPropertyKey`:  
+  - Made “capture source URI” note optional,  
+  - Simplified file‐reading and key‐listing descriptions,  
+  - Renumbered insertion/map/cache/open/cursor steps,  
+  - Removed leftover debug output blocks.  
+- Always open the properties file in `ViewColumn.One` when revealing after QuickFix.  
+- Streamlined cursor placement in `addPropertyKey` to use `lineAt(insertIdx)` for reliable positioning immediately after the `=`.
+
+---
+
 ## [1.0.6] - 2025-07-29
 
 ### Changed
