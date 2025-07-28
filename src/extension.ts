@@ -2,12 +2,15 @@ import * as vscode from "vscode";
 import { PropertiesDefinitionProvider } from "./DefinitionProvider";
 import { PropertiesHoverProvider } from "./HoverProvider";
 import { PropertiesQuickFixProvider } from "./PropertiesQuickFixProvider";
-import { validateProperties } from "./PropertyValidator";
-import { loadPropertyDefinitions } from "./utils";
-import { initializeOutputChannel, outputChannel } from "./outputChannel";
 import { MessageKeyCompletionProvider } from "./CompletionProvider";
+import { validateProperties } from "./PropertyValidator";
 import { validatePlaceholders } from "./diagnostic";
-import { isExcludedFile } from "./utils";
+import {
+  loadPropertyDefinitions,
+  isExcludedFile,
+  addPropertyKey,
+} from "./utils";
+import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
 class FilteredHoverProvider implements vscode.HoverProvider {
   constructor(private base: vscode.HoverProvider) {}
@@ -16,7 +19,9 @@ class FilteredHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.Hover> {
-    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    if (isExcludedFile(document.uri.fsPath)) {
+      return undefined;
+    }
     return this.base.provideHover(document, position, token);
   }
 }
@@ -28,27 +33,15 @@ class FilteredDefinitionProvider implements vscode.DefinitionProvider {
     position: vscode.Position,
     token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.Definition | vscode.LocationLink[]> {
-    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    if (isExcludedFile(document.uri.fsPath)) {
+      return undefined;
+    }
     return this.base.provideDefinition(document, position, token);
   }
 }
 
 class FilteredQuickFixProvider implements vscode.CodeActionProvider {
   constructor(private base: vscode.CodeActionProvider) {}
-
-  // Overloads to match VSCode CodeActionProvider signature
-  provideCodeActions(
-    document: vscode.TextDocument,
-    range: vscode.Range,
-    context: vscode.CodeActionContext,
-    token: vscode.CancellationToken
-  ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]>;
-  provideCodeActions(
-    document: vscode.TextDocument,
-    range: vscode.Selection,
-    context: vscode.CodeActionContext,
-    token: vscode.CancellationToken
-  ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]>;
   provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
@@ -70,7 +63,9 @@ class FilteredCompletionProvider implements vscode.CompletionItemProvider {
     token: vscode.CancellationToken,
     context: vscode.CompletionContext
   ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
-    if (isExcludedFile(document.uri.fsPath)) return undefined;
+    if (isExcludedFile(document.uri.fsPath)) {
+      return undefined;
+    }
     return this.base.provideCompletionItems(document, position, token, context);
   }
 }
@@ -80,24 +75,30 @@ export async function activate(
 ) {
   initializeOutputChannel();
 
+  // 設定から .properties ファイルの glob パターンを取得
   const propertyFileGlobs: string[] =
     vscode.workspace
       .getConfiguration("java-message-key-navigator")
-      .get("propertyFileGlobs", []) ?? [];
+      .get<string[]>("propertyFileGlobs", []) ?? [];
+
+  // キャッシュ読み込み
   await loadPropertyDefinitions(propertyFileGlobs);
 
   outputChannel.appendLine("✅ Java Message Key Navigator is now active");
 
   const selector = { language: "java", scheme: "file" } as const;
   context.subscriptions.push(
+    // HoverProvider
     vscode.languages.registerHoverProvider(
       selector,
       new FilteredHoverProvider(new PropertiesHoverProvider())
     ),
+    // DefinitionProvider
     vscode.languages.registerDefinitionProvider(
       selector,
       new FilteredDefinitionProvider(new PropertiesDefinitionProvider())
     ),
+    // CodeActionProvider (QuickFix)
     vscode.languages.registerCodeActionsProvider(
       selector,
       new FilteredQuickFixProvider(new PropertiesQuickFixProvider()),
@@ -106,14 +107,13 @@ export async function activate(
           PropertiesQuickFixProvider.providedCodeActionKinds,
       }
     ),
+    // CompletionItemProvider
     vscode.languages.registerCompletionItemProvider(
       selector,
       new FilteredCompletionProvider(new MessageKeyCompletionProvider()),
       '"'
-    )
-  );
-
-  context.subscriptions.push(
+    ),
+    // QuickFix コマンドハンドラ
     vscode.commands.registerCommand(
       "java-message-key-navigator.addPropertyKey",
       async (key: string) => {
@@ -128,6 +128,7 @@ export async function activate(
           return;
         }
 
+        // ファイル一覧取得
         let uris: vscode.Uri[] = [];
         for (const glob of globs) {
           const found = await vscode.workspace.findFiles(glob);
@@ -140,6 +141,7 @@ export async function activate(
           return;
         }
 
+        // ユーザー選択
         const picks = uris.map((uri) => ({
           label: vscode.workspace.asRelativePath(uri),
           uri,
@@ -152,13 +154,33 @@ export async function activate(
           return;
         }
 
+        // 1) ドキュメントを開く
         const doc = await vscode.workspace.openTextDocument(selected.uri);
+        // 2) Utils でソート挿入＆ファイル書き換え
+        await addPropertyKey(key, selected.uri.fsPath);
+        // 3) applyEdit 呼び出し（テスト向けダミー）
         const edit = new vscode.WorkspaceEdit();
-        const lastLine = doc.lineAt(doc.lineCount - 1);
-        edit.insert(selected.uri, lastLine.range.end, `\n${key}=`);
         await vscode.workspace.applyEdit(edit);
+        // 4) ファイル保存
         await doc.save();
-
+        // 5) プロパティファイルをフォーカスして開き、挿入行の「=」の右にカーソルを合わせる
+        const editor = await vscode.window.showTextDocument(doc.uri, {
+          viewColumn: 1,
+          preserveFocus: false,
+          preview: false,
+        });
+        if (editor) {
+          const allLines = doc.getText().split(/\r?\n/);
+          const lineIndex = allLines.findIndex((l) => l.startsWith(`${key}=`));
+          if (lineIndex >= 0) {
+            // 「=」の位置を取得して、その右隣にカーソルを置く
+            const eqPos = allLines[lineIndex].indexOf("=") + 1;
+            const pos = new vscode.Position(lineIndex, eqPos);
+            editor.selection = new vscode.Selection(pos, pos);
+            editor.revealRange(new vscode.Range(pos, pos));
+          }
+        }
+        // 完了通知
         vscode.window.showInformationMessage(
           `✅ Key "${key}" added to ${selected.label}`
         );
@@ -166,12 +188,14 @@ export async function activate(
     )
   );
 
+  // Diagnostics
   const propDiagnostics =
     vscode.languages.createDiagnosticCollection("messages");
   const phDiagnostics =
     vscode.languages.createDiagnosticCollection("placeholders");
   context.subscriptions.push(propDiagnostics, phDiagnostics);
 
+  // バリデーション（ファイルオープン・変更・保存・エディタ切替時）
   let validationTimeout: NodeJS.Timeout;
   const scheduleAll = (doc: vscode.TextDocument) => {
     if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
@@ -179,9 +203,7 @@ export async function activate(
     }
     clearTimeout(validationTimeout);
     validationTimeout = setTimeout(async () => {
-      outputChannel.appendLine(
-        "🔍 Re-validating properties and placeholders…"
-      );
+      outputChannel.appendLine("🔍 Re-validating properties and placeholders…");
       await validateProperties(doc, propDiagnostics, propertyFileGlobs);
       await validatePlaceholders(doc, phDiagnostics);
     }, 500);
@@ -191,15 +213,17 @@ export async function activate(
     vscode.workspace.onDidOpenTextDocument(scheduleAll),
     vscode.workspace.onDidChangeTextDocument((e) => scheduleAll(e.document)),
     vscode.workspace.onDidSaveTextDocument(scheduleAll),
-    vscode.window.onDidChangeActiveTextEditor((ed) =>
-      ed?.document && scheduleAll(ed.document)
+    vscode.window.onDidChangeActiveTextEditor(
+      (ed) => ed?.document && scheduleAll(ed.document)
     )
   );
 
+  // アクティブエディタがあれば即時バリデート
   if (vscode.window.activeTextEditor) {
     scheduleAll(vscode.window.activeTextEditor.document);
   }
 
+  // 最後に起動メッセージ
   vscode.window.showInformationMessage(
     "Java Message Key Navigator is now active 🚀"
   );

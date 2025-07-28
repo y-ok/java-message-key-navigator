@@ -152,4 +152,54 @@ describe("PropertiesHoverProvider", () => {
     const second = provider.provideHover(doc, pos);
     expect(second).toBeInstanceOf(vscode.Hover);
   });
+
+  describe("LogStartEndアノテーション対応", () => {
+    const text = '@LogStartEnd(start="S", end="E", exception="X")';
+    beforeEach(() => {
+      // LogStartEnd用の正規表現を返す
+      (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+        /@LogStartEnd\(\s*start="([^"]+)"\s*,\s*end="([^"]+)"\s*,\s*exception="([^"]+)"\s*\)/g,
+      ]);
+      // プロパティサービスのモック
+      (utils.getPropertyValue as jest.Mock).mockImplementation(
+        (key: string) => {
+          switch (key) {
+            case "S":
+              return "Start Message";
+            case "E":
+              return "End Message";
+            case "X":
+              return "Exception Message";
+            default:
+              return undefined;
+          }
+        }
+      );
+      doc.getText.mockReturnValue(text);
+    });
+
+    it("start属性にホバーすると対応メッセージが返る", () => {
+      doc.offsetAt.mockReturnValue(text.indexOf("S") + 1);
+      const res = provider.provideHover(doc, pos);
+      expect(res).toBeInstanceOf(vscode.Hover);
+      const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
+      expect(md.value).toBe("Start Message");
+    });
+
+    it("end属性にホバーすると対応メッセージが返る", () => {
+      doc.offsetAt.mockReturnValue(text.indexOf("E") + 1);
+      const res = provider.provideHover(doc, pos);
+      expect(res).toBeInstanceOf(vscode.Hover);
+      const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
+      expect(md.value).toBe("End Message");
+    });
+
+    it("exception属性にホバーすると対応メッセージが返る", () => {
+      doc.offsetAt.mockReturnValue(text.indexOf("X") + 1);
+      const res = provider.provideHover(doc, pos);
+      expect(res).toBeInstanceOf(vscode.Hover);
+      const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
+      expect(md.value).toBe("Exception Message");
+    });
+  });
 });

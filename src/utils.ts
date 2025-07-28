@@ -8,36 +8,44 @@ import { outputChannel } from "./outputChannel";
 let propertyCache: Record<string, string> = {};
 
 /**
- * settings.json の java-message-key-navigator.propertyFileGlobs で指定された
- * Glob パターンでマッチする .properties ファイルだけを読み込み、
+ * Globパターンでマッチする .properties ファイルを読み込み、
  * キー→値 をキャッシュします。
+ * @param customPropertyGlobs テスト時や動的指定用のグロブ配列
  */
 export async function loadPropertyDefinitions(
   customPropertyGlobs: string[] = []
 ): Promise<void> {
+  // 1) キャッシュ初期化
   propertyCache = {};
-  const workspaceFolders = vscode.workspace.workspaceFolders || [];
 
-  for (const folder of workspaceFolders) {
-    for (const pattern of customPropertyGlobs) {
-      outputChannel.appendLine(`🔍 findFiles pattern: ${pattern}`);
-      const uris = await vscode.workspace.findFiles(pattern);
-      outputChannel.appendLine(
-        `  → found: ${uris.map((u) => u.fsPath).join(", ") || "none"}`
-      );
-      for (const uri of uris) {
-        const fp = uri.fsPath;
-        if (!fs.existsSync(fp)) continue;
-        outputChannel.appendLine(`🔄 Loading properties: ${fp}`);
-        const content = fs.readFileSync(fp, "utf-8");
-        content
-          .split(/\r?\n/)
-          .filter((l) => l && !l.startsWith("#"))
-          .forEach((line) => {
-            const [key, ...valueParts] = line.split("=");
-            propertyCache[key.trim()] = valueParts.join("=").trim();
-          });
-      }
+  // 2) パターン配列を決定（引数がなければ設定値を読む）
+  const config = vscode.workspace.getConfiguration(
+    "java-message-key-navigator"
+  );
+  const globs: string[] =
+    customPropertyGlobs.length > 0
+      ? customPropertyGlobs
+      : config.get<string[]>("propertyFileGlobs", []);
+
+  // 3) 各グロブで findFiles → 読み込み
+  for (const pattern of globs) {
+    outputChannel.appendLine(`🔍 findFiles pattern: ${pattern}`);
+    const uris = await vscode.workspace.findFiles(pattern);
+    outputChannel.appendLine(
+      `  → found: ${uris.map((u) => u.fsPath).join(", ") || "none"}`
+    );
+    for (const uri of uris) {
+      const fp = uri.fsPath;
+      if (!fs.existsSync(fp)) continue;
+      outputChannel.appendLine(`🔄 Loading properties: ${fp}`);
+      const content = fs.readFileSync(fp, "utf-8");
+      content
+        .split(/\r?\n/)
+        .filter((l) => l.trim() && !l.startsWith("#"))
+        .forEach((line) => {
+          const [key, ...valueParts] = line.split("=");
+          propertyCache[key.trim()] = valueParts.join("=").trim();
+        });
     }
   }
 }
@@ -131,10 +139,13 @@ export async function findPropertyLocation(
  * 指定キーを適切な位置に挿入＆カーソル移動します。
  */
 export async function addPropertyKey(key: string, fileToUse: string) {
-  // fileToUse が glob の場合は実ファイルパスを解決
+  // 1) 元のソースURIをキャプチャ
+  const sourceUri = vscode.window.activeTextEditor?.document.uri;
+
+  // 2) glob→実ファイル解決
   let targetPath = fileToUse;
   if (!path.isAbsolute(fileToUse) || !fs.existsSync(fileToUse)) {
-    const uris = await vscode.workspace.findFiles(fileToUse, undefined, 1);
+    const uris = await vscode.workspace.findFiles(fileToUse);
     if (uris.length === 0) {
       vscode.window.showErrorMessage(
         `❌ Property file not found: ${fileToUse}`
@@ -143,59 +154,98 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     }
     targetPath = uris[0].fsPath;
   }
-
   if (!fs.existsSync(targetPath)) {
     vscode.window.showErrorMessage(`❌ Property file not found: ${targetPath}`);
     return;
   }
 
-  const label = path.basename(targetPath);
+  // 3) ファイルを読み込んで行とキーを取得
   const raw = fs.readFileSync(targetPath, "utf-8");
   const allLines = raw.split(/\r?\n/);
+  const label = path.basename(targetPath);
 
-  // 既存キー一覧を取得（空行・コメント除外）
+  // 空行・コメント除外してキー一覧
   const keys = allLines
-    .map((l) => l.split("=")[0].trim())
+    .map((line) => line.split("=", 1)[0].trim())
     .filter((k) => k && !k.startsWith("#"));
 
-  // 重複チェック
+  // 4) 重複チェック
   if (keys.includes(key)) {
     vscode.window.showWarningMessage(`⚠️ "${key}" already exists in ${label}.`);
     return;
   }
 
-  // 挿入位置を決定：新キーより大きい最初の既存キー行の直前
-  let insertIdx = allLines.length;
-  for (const existingKey of keys) {
-    if (existingKey > key) {
-      insertIdx = allLines.findIndex((l) =>
-        l.trim().startsWith(existingKey + "=")
-      );
-      break;
+  // --- 5. 行番号マップを作成 ---
+  const keyLineMap = new Map<string, number>();
+  allLines.forEach((line, idx) => {
+    const rawKey = line.split("=", 1)[0].trim();
+    if (rawKey && !rawKey.startsWith("#") && line.includes("=")) {
+      keyLineMap.set(rawKey, idx);
     }
+  });
+
+  // ■ここからデバッグ出力■
+  outputChannel.appendLine(
+    `🔍 allLines (${allLines.length}):\n${allLines.join(os.EOL)}`
+  );
+  outputChannel.appendLine(`🔍 keys: ${JSON.stringify(keys)}`);
+  // ソート後の一覧
+  const allKeysSorted = [...keys, key].sort((a, b) => a.localeCompare(b));
+  outputChannel.appendLine(
+    `🔍 allKeysSorted: ${JSON.stringify(allKeysSorted)}`
+  );
+  outputChannel.appendLine(
+    `🔍 keyLineMap: ${JSON.stringify(Array.from(keyLineMap.entries()))}`
+  );
+  // ■ここまでデバッグ出力■
+
+  // --- 6. 挿入位置を決定：ソート順で nextKey の行番号 or 末尾 ---
+  const newIdx = allKeysSorted.indexOf(key);
+  let insertIdx: number;
+  if (newIdx === allKeysSorted.length - 1) {
+    insertIdx = allLines.length;
+  } else {
+    const nextKey = allKeysSorted[newIdx + 1];
+    outputChannel.appendLine(`🔍 nextKey: ${nextKey}`);
+    insertIdx = keyLineMap.get(nextKey) ?? allLines.length;
   }
 
-  // ファイル行配列に挿入
+  // 7) 配列に挿入 & 保存
   allLines.splice(insertIdx, 0, `${key}=`);
-
-  // 上書き保存
   fs.writeFileSync(targetPath, allLines.join(os.EOL), "utf-8");
   vscode.window.showInformationMessage(
     `✅ Added "${key}" to ${label}! (line ${insertIdx + 1})`
   );
 
-  // カーソル移動
-  await new Promise((r) => setTimeout(r, 100));
-  const doc = await vscode.workspace.openTextDocument(targetPath);
-  const editor = await vscode.window.showTextDocument(doc);
-  const line = insertIdx;
-  const pos = new vscode.Position(line, key.length + 1);
-  editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos));
+  // 8) キャッシュ更新
+  await loadPropertyDefinitions([targetPath]);
 
-  outputChannel.appendLine(`📍 Added ${key}= to ${label} at line ${line + 1}`);
+  // 9) 別タブでソース → プロパティを開く（プレビュー抑制）
+  const propertyUri = vscode.Uri.file(targetPath);
+  await vscode.window.showTextDocument(propertyUri, {
+    viewColumn: 1,
+    preserveFocus: false,
+    preview: false,
+  });
+
+  const propDoc = await vscode.workspace.openTextDocument(targetPath);
+  const propEd = await vscode.window.showTextDocument(propDoc, {
+    viewColumn: 2,
+    preserveFocus: false,
+    preview: false,
+  });
+
+  // 10) 挿入行へカーソル
+  if (propEd) {
+    const pos = new vscode.Position(insertIdx, key.length + 1);
+    propEd.selection = new vscode.Selection(pos, pos);
+    propEd.revealRange(new vscode.Range(pos, pos));
+  }
+
+  outputChannel.appendLine(
+    `📍 Added ${key}= to ${label} at line ${insertIdx + 1}`
+  );
 }
-
 /** settings の propertyFileGlobs から .properties を全取得 */
 export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
   const globs = vscode.workspace
@@ -238,19 +288,19 @@ export async function getMessageValueForKey(
  * @param filePath 絶対パス or ワークスペースルートからのパス
  */
 export function isExcludedFile(filePath: string): boolean {
-    const excludedDirs = [
-        '/.git/',
-        '/node_modules/',
-        '/target/',
-        '/build/',
-        '/out/',
-        '/dist/',
-        '/tmp/',
-        '/temp/',
-        '/src/test/',
-        '/src/generated/',
-    ];
-    // Windowsでも動作するようパス区切りをnormalize
-    const normalized = filePath.replace(/\\/g, '/');
-    return excludedDirs.some(dir => normalized.includes(dir));
+  const excludedDirs = [
+    "/.git/",
+    "/node_modules/",
+    "/target/",
+    "/build/",
+    "/out/",
+    "/dist/",
+    "/tmp/",
+    "/temp/",
+    "/src/test/",
+    "/src/generated/",
+  ];
+  // Windowsでも動作するようパス区切りをnormalize
+  const normalized = filePath.replace(/\\/g, "/");
+  return excludedDirs.some((dir) => normalized.includes(dir));
 }

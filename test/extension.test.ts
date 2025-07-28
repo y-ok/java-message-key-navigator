@@ -4,6 +4,7 @@ import { strict as assert } from "assert";
 const showWarningMessage = jest.fn();
 const showInformationMessage = jest.fn();
 const showQuickPick = jest.fn();
+const showTextDocument = jest.fn();
 const applyEdit = jest.fn();
 const openTextDocument = jest.fn();
 const asRelativePath = jest.fn((uri) => uri.fsPath);
@@ -19,6 +20,7 @@ const mockWindow: any = {
   showWarningMessage,
   showInformationMessage,
   showQuickPick,
+  showTextDocument,
   activeTextEditor: undefined,
   onDidChangeActiveTextEditor: jest.fn((fn) => ({ dispose: jest.fn() })),
 };

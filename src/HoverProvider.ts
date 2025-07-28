@@ -1,52 +1,61 @@
 import * as vscode from "vscode";
-import { outputChannel } from "./outputChannel";
 import { getCustomPatterns, getPropertyValue } from "./utils";
+import { outputChannel } from "./outputChannel";
 
 export class PropertiesHoverProvider implements vscode.HoverProvider {
-  provideHover(
+  public provideHover(
     document: vscode.TextDocument,
     position: vscode.Position
   ): vscode.ProviderResult<vscode.Hover> {
     const text = document.getText();
     const offset = document.offsetAt(position);
+
+    // カスタムパターンを取得 (log("KEY") や @LogStartEnd(...) など)
     const patterns = getCustomPatterns();
     const processedKeys = new Set<string>();
 
-    outputChannel.appendLine("🔍 Executing hover operation...");
-
     for (const regex of patterns) {
       regex.lastIndex = 0;
-      let match;
+      let match: RegExpExecArray | null;
 
+      // ドキュメント全体をパターンマッチ
       while ((match = regex.exec(text)) !== null) {
-        const key = match[1];
-        if (!key || processedKeys.has(key)) continue;
+        // マッチしたキャプチャグループ (match[1], match[2], …) をすべてキーとして扱う
+        const keys = match
+          .slice(1)
+          .filter((g): g is string => typeof g === "string");
 
-        const start = match.index + match[0].indexOf(key);
-        const end = start + key.length;
+        for (const key of keys) {
+          if (!key || processedKeys.has(key)) continue;
 
-        if (offset >= start && offset <= end) {
-          processedKeys.add(key);
-          outputChannel.appendLine(
-            `✅ Hover target key: ${key} (pattern: ${regex})`
-          );
+          // キャプチャ文字列の開始・終了オフセットを計算
+          const start = match.index + match[0].indexOf(key);
+          const end = start + key.length;
 
-          let value = getPropertyValue(key);
-          if (value) {
-            // 🔹 `=` を含む場合はコードブロックで囲む
-            if (value.includes("=")) {
-              value = "```\n" + value + "\n```";
-            }
-
+          // カーソル位置がその範囲内ならホバーを返す
+          if (offset >= start && offset <= end) {
+            processedKeys.add(key);
             outputChannel.appendLine(
-              `📢 Displaying hover message: 🔤 Message: ${value}`
+              `✅ Hover target key: ${key} (pattern: ${regex})`
             );
-            return new vscode.Hover(new vscode.MarkdownString(value));
+
+            let value = getPropertyValue(key);
+            if (value) {
+              // メッセージ中に "=" が含まれる場合はコードブロックで囲む
+              if (value.includes("=")) {
+                value = "```\n" + value + "\n```";
+              }
+              outputChannel.appendLine(
+                `📢 Displaying hover message: 🔤 Message: ${value}`
+              );
+              return new vscode.Hover(new vscode.MarkdownString(value));
+            }
           }
         }
       }
     }
 
+    // マッチしなければ何も返さない
     return;
   }
 }
