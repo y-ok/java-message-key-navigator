@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.6] - 2025-07-29
+
+### Changed
+
+* Bumped extension version to **1.0.6** and updated `vscode` dependency to `^1.1.37`.
+* Refactored **HoverProvider** to support multiple capture groups (e.g. `start`/`end`/`exception` in `@LogStartEnd`) and cleaned up hover-workflow logging.
+* Converted **PropertiesQuickFixProvider** to async, fetching `propertyFileGlobs` from settings, passing the target file path to the add-key command, and registering code actions accordingly.
+* Overhauled **utils.addPropertyKey** for:
+
+  * Sorted insertion of new keys into `.properties` (preserving comments/empty lines),
+  * Cache invalidation and reload via `loadPropertyDefinitions`,
+  * Precise cursor placement immediately after the `=` on the inserted line.
+* Streamlined **extension.ts** activation:
+
+  * Integrated `loadPropertyDefinitions` and `isExcludedFile` checks,
+  * Restructured the `addPropertyKey` command handler to open, edit, save, and reveal the properties file,
+  * Improved validation scheduling for properties and placeholders.
+
+### Added
+
+* Full Jest test coverage for **utils**, **HoverProvider**, **PropertiesQuickFixProvider**, **diagnostics**, and **extension** flows, with complete VS Code API mocks for isolated unit testing.
+
+---
+
 ## [1.0.5] - 2025-07-27
 
 ### Changed
