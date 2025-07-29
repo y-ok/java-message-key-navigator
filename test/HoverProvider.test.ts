@@ -4,6 +4,7 @@
 import { PropertiesHoverProvider } from "../src/HoverProvider";
 import * as utils from "../src/utils";
 import * as vscode from "vscode";
+import { outputChannel } from "../src/outputChannel";
 
 // ——— vscode API モック
 jest.mock("vscode", () => {
@@ -200,6 +201,59 @@ describe("PropertiesHoverProvider", () => {
       expect(res).toBeInstanceOf(vscode.Hover);
       const md = (res as vscode.Hover).contents[0] as vscode.MarkdownString;
       expect(md.value).toBe("Exception Message");
+    });
+  });
+
+  describe("PropertiesHoverProvider – value falsy スキップ", () => {
+    let provider: PropertiesHoverProvider;
+    let doc: any;
+    const pos = { line: 0, character: 1 } as vscode.Position;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      provider = new PropertiesHoverProvider();
+      doc = {
+        getText: jest.fn().mockReturnValue('log("SKIP_KEY");'),
+        offsetAt: jest.fn().mockReturnValue(5), // 範囲内
+        uri: { fsPath: "/foo/Bar.java" },
+      } as any;
+      // まずは log("KEY") パターン
+      (utils.getCustomPatterns as jest.Mock).mockReturnValue([
+        /log\("([^"]+)"\)/g,
+      ]);
+    });
+
+    it("getPropertyValue が undefined のときは Displaying hover message を出さない", () => {
+      (utils.getPropertyValue as jest.Mock).mockReturnValue(undefined);
+
+      const res = provider.provideHover(doc, pos);
+      expect(res).toBeUndefined();
+
+      const logs = (outputChannel.appendLine as jest.Mock).mock.calls.map(
+        ([msg]: [string]) => msg
+      );
+      expect(logs[0]).toContain("✅ Hover target key: SKIP_KEY");
+      // 「📢 Displaying hover message」は含まれない
+      expect(logs.some((l) => l.includes("📢 Displaying hover message"))).toBe(
+        false
+      );
+    });
+
+    it('getPropertyValue が空文字列 "" のときも Displaying hover message を出さない', () => {
+      (utils.getPropertyValue as jest.Mock).mockReturnValue("");
+
+      const res = provider.provideHover(doc, pos);
+      expect(res).toBeUndefined();
+
+      const logs = (outputChannel.appendLine as jest.Mock).mock.calls.map(
+        ([msg]: [string]) => msg
+      );
+      expect(logs[0]).toContain("✅ Hover target key: SKIP_KEY");
+      expect(logs).not.toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("📢 Displaying hover message"),
+        ])
+      );
     });
   });
 });

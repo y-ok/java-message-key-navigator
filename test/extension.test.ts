@@ -48,7 +48,6 @@ const WorkspaceEdit = jest.fn().mockImplementation(() => ({
   insert: jest.fn(),
 }));
 
-// ===== jest.mockで "vscode" を先にモック =====
 jest.mock("vscode", () => ({
   __esModule: true,
   window: mockWindow,
@@ -60,9 +59,18 @@ jest.mock("vscode", () => ({
   CodeActionKind: {
     QuickFix: "quickfix",
   },
+  Position: jest.fn().mockImplementation((line: number, character: number) => ({
+    line,
+    character,
+  })),
+  Selection: jest
+    .fn()
+    .mockImplementation((start: any, end: any) => ({ start, end })),
+  Range: jest
+    .fn()
+    .mockImplementation((start: any, end: any) => ({ start, end })),
 }));
 
-// ===== 依存モジュールもmock =====
 jest.mock("../src/outputChannel", () => ({
   __esModule: true,
   initializeOutputChannel: jest.fn(),
@@ -98,6 +106,54 @@ describe("activate", () => {
       undefined
     );
     (diagnostic.validatePlaceholders as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it("プロパティファイル追加: editorはあるが '=' の行が見つからないとき selection/revealRange は呼ばれない", async () => {
+    // 1) 設定とファイル選択のモック
+    mockWorkspace.getConfiguration
+      .mockReturnValueOnce({
+        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+      })
+      .mockReturnValueOnce({
+        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+      });
+    findFiles.mockResolvedValueOnce([{ fsPath: "/dir/bar.properties" }]);
+    showQuickPick.mockResolvedValueOnce({
+      label: "bar.properties",
+      uri: { fsPath: "/dir/bar.properties" },
+    });
+
+    // 2) ドキュメントのモック：行はあるが "NEWKEY=" はない
+    const lines = ["foo=1", "bar=2", "baz=3"];
+    const mockDoc: any = {
+      uri: {
+        fsPath: "/dir/bar.properties",
+        toString: () => "/dir/bar.properties",
+      },
+      getText: jest.fn().mockReturnValue(lines.join("\n")),
+      save: jest.fn().mockResolvedValue(true),
+      lineAt: jest
+        .fn()
+        .mockReturnValue({ range: { end: { line: 1, character: 5 } } }),
+      lineCount: 3,
+    };
+    openTextDocument.mockResolvedValueOnce(mockDoc);
+
+    // 3) エディタのモック
+    const mockEditor: any = {
+      selection: undefined,
+      revealRange: jest.fn(),
+    };
+    showTextDocument.mockResolvedValueOnce(mockEditor);
+
+    // 4) 実行
+    await activate(context);
+    const handler = registerCommand.mock.calls[0][1];
+    await handler("NEWKEY");
+
+    // 5) アサーション：selection は変わらず、revealRange も呼ばれていない
+    assert.strictEqual(mockEditor.selection, undefined);
+    assert.strictEqual(mockEditor.revealRange.mock.calls.length, 0);
   });
 
   it("プロバイダとコマンドがすべて登録される", async () => {
@@ -211,6 +267,54 @@ describe("activate", () => {
     );
   });
 
+  it("activate: activeTextEditor があるとき scheduleAll が呼ばれる", async () => {
+    // タイマーをモック化
+    jest.useFakeTimers();
+
+    // 1) mockWindow に activeTextEditor を仕込む
+    const fakeDoc = {
+      languageId: "java",
+      uri: { fsPath: "/foo/Bar.java" },
+      getText: jest.fn().mockReturnValue(""), // scheduleAll内のsplit用
+    } as any;
+    mockWindow.activeTextEditor = { document: fakeDoc } as any;
+
+    // 2) 除外ファイルフィルタを通過させる
+    (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+
+    // 3) activate を実行
+    await activate(context);
+
+    // まだタイマー前なのでバリデータは呼ばれていない
+    assert.strictEqual(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+      0
+    );
+    assert.strictEqual(
+      (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+      0
+    );
+
+    // 4) 500ms 経過させてコールバックを即時実行
+    jest.advanceTimersByTime(500);
+    // Promise キューを解放して async 内も回す
+    await Promise.resolve();
+
+    // 5) scheduleAll 経由でバリデータが呼ばれているはず
+    assert.strictEqual(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length > 0,
+      true
+    );
+    assert.strictEqual(
+      (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length > 0,
+      true
+    );
+
+    // 後片付け
+    mockWindow.activeTextEditor = undefined;
+    jest.useRealTimers();
+  });
+
   it("バリデーション: Javaかつ対象パスなら両バリデーションが呼ばれる", async () => {
     (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
     await activate(context);
@@ -239,5 +343,301 @@ describe("activate", () => {
 
     // テスト終了後にタイマーをリセット
     jest.useRealTimers();
+  });
+
+  // 既存の「正常系でkey追加、保存」テストのあと、バリデーション系テストの手前あたりに追加してください
+  it("プロパティファイル追加: editorがあるとき '=' の右隣にカーソルをセットし、revealRangeが呼ばれる", async () => {
+    // 1) 設定とファイル選択のモック
+    mockWorkspace.getConfiguration
+      .mockReturnValueOnce({
+        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+      })
+      .mockReturnValueOnce({
+        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+      });
+    findFiles.mockResolvedValueOnce([{ fsPath: "/dir/bar.properties" }]);
+    showQuickPick.mockResolvedValueOnce({
+      label: "bar.properties",
+      uri: { fsPath: "/dir/bar.properties" },
+    });
+
+    // 2) ドキュメントのモック：2行目に "NEWKEY=" がある想定
+    const lines = ["foo=1", "NEWKEY=", "baz=3"];
+    const mockDoc: any = {
+      uri: {
+        fsPath: "/dir/bar.properties",
+        toString: () => "/dir/bar.properties",
+      },
+      getText: jest.fn().mockReturnValue(lines.join("\n")),
+      save: jest.fn().mockResolvedValue(true),
+      lineAt: jest
+        .fn()
+        .mockReturnValue({ range: { end: { line: 2, character: 3 } } }),
+      lineCount: 3,
+    };
+    openTextDocument.mockResolvedValueOnce(mockDoc);
+
+    // 3) エディタのモック
+    const mockEditor: any = {
+      selection: undefined,
+      revealRange: jest.fn(),
+    };
+    showTextDocument.mockResolvedValueOnce(mockEditor);
+
+    // 4) 実行
+    await activate(context);
+    const handler = registerCommand.mock.calls[0][1];
+    await handler("NEWKEY");
+
+    // 5) アサーション：selectionがセットされ、revealRangeが呼ばれていること
+    assert.ok(mockEditor.selection, "editor.selection が設定されているはず");
+    assert.strictEqual(
+      mockEditor.revealRange.mock.calls.length > 0,
+      true,
+      "editor.revealRange が呼ばれているはず"
+    );
+  });
+
+  describe("activate → subscription callbacks のスケジュール動作", () => {
+    beforeAll(() => {
+      jest.useFakeTimers();
+    });
+    afterAll(() => {
+      jest.useRealTimers();
+    });
+    beforeEach(() => {
+      jest.clearAllMocks();
+      // 除外フィルタは通す
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+    });
+
+    it("onDidChangeTextDocument: Javaドキュメントなら scheduleAll が呼ばれる", async () => {
+      await activate(context);
+      const changeCb = mockWorkspace.onDidChangeTextDocument.mock.calls[0][0];
+      const doc = {
+        languageId: "java",
+        uri: { fsPath: "foo" },
+        getText: jest.fn().mockReturnValue(""),
+      } as any;
+      changeCb({ document: doc });
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.ok(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length >
+          0,
+        "validateProperties が呼ばれる"
+      );
+      assert.ok(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length > 0,
+        "validatePlaceholders が呼ばれる"
+      );
+    });
+
+    it("onDidChangeTextDocument: Java以外や除外ファイルでは何も起きない", async () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      await activate(context);
+      const changeCb = mockWorkspace.onDidChangeTextDocument.mock.calls[0][0];
+      const doc = { languageId: "xml", uri: { fsPath: "foo" } } as any;
+      changeCb({ document: doc });
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.strictEqual(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+        0
+      );
+      assert.strictEqual(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+        0
+      );
+    });
+
+    it("onDidSaveTextDocument: Javaドキュメントなら scheduleAll が呼ばれる", async () => {
+      await activate(context);
+      const saveCb = mockWorkspace.onDidSaveTextDocument.mock.calls[0][0];
+      const doc = {
+        languageId: "java",
+        uri: { fsPath: "foo" },
+        getText: jest.fn().mockReturnValue(""),
+      } as any;
+      saveCb(doc);
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.ok(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length >
+          0,
+        "validateProperties が呼ばれる"
+      );
+      assert.ok(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length > 0,
+        "validatePlaceholders が呼ばれる"
+      );
+    });
+
+    it("onDidSaveTextDocument: Java以外や除外ファイルでは何も起きない", async () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      await activate(context);
+      const saveCb = mockWorkspace.onDidSaveTextDocument.mock.calls[0][0];
+      const doc = { languageId: "xml", uri: { fsPath: "foo" } } as any;
+      saveCb(doc);
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.strictEqual(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+        0
+      );
+      assert.strictEqual(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+        0
+      );
+    });
+
+    it("onDidChangeActiveTextEditor: editor.document があれば scheduleAll が呼ばれる", async () => {
+      await activate(context);
+      const activeCb = mockWindow.onDidChangeActiveTextEditor.mock.calls[0][0];
+      const doc = {
+        languageId: "java",
+        uri: { fsPath: "foo" },
+        getText: jest.fn().mockReturnValue(""),
+      } as any;
+      activeCb({ document: doc });
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.ok(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length >
+          0,
+        "validateProperties が呼ばれる"
+      );
+      assert.ok(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length > 0,
+        "validatePlaceholders が呼ばれる"
+      );
+    });
+
+    it("onDidChangeActiveTextEditor: undefined が渡されると何も起きない", async () => {
+      await activate(context);
+      const activeCb = mockWindow.onDidChangeActiveTextEditor.mock.calls[0][0];
+      activeCb(undefined);
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      assert.strictEqual(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+        0
+      );
+      assert.strictEqual(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+        0
+      );
+    });
+  });
+
+  describe("Filtered*Provider classes", () => {
+    const fakeDoc = { uri: { fsPath: "/any/file" }, languageId: "java" } as any;
+    const pos = {} as any;
+    const token = {} as any;
+
+    beforeEach(async () => {
+      // clearAllMocks は outer beforeEach ですでに呼ばれているので、
+      // 実装のモックだけ確認できればOK
+      // 設定は空配列、loadPropertyDefinitionsは解決、activateで登録
+      mockWorkspace.getConfiguration.mockReturnValue({
+        get: jest.fn().mockReturnValue([]),
+      });
+      await activate(context);
+    });
+
+    it("FilteredHoverProvider: isExcludedFile=true → undefined を返す", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      const provider = registerHoverProvider.mock.calls[0][1] as any;
+      const result = provider.provideHover(fakeDoc, pos, token);
+      assert.strictEqual(result, undefined);
+    });
+
+    it("FilteredHoverProvider: isExcludedFile=false → base.provideHover が呼ばれる", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+      const provider = registerHoverProvider.mock.calls[0][1] as any;
+      // base をモックに差し替え
+      const baseMock = { provideHover: jest.fn().mockReturnValue("HOVERED") };
+      provider.base = baseMock;
+      const result = provider.provideHover(fakeDoc, pos, token);
+      assert.strictEqual(result, "HOVERED");
+      assert.ok(baseMock.provideHover.mock.calls.length > 0);
+    });
+
+    it("FilteredDefinitionProvider: isExcludedFile=true → undefined を返す", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      const provider = registerDefinitionProvider.mock.calls[0][1] as any;
+      const result = provider.provideDefinition(fakeDoc, pos, token);
+      assert.strictEqual(result, undefined);
+    });
+
+    it("FilteredDefinitionProvider: isExcludedFile=false → base.provideDefinition が呼ばれる", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+      const provider = registerDefinitionProvider.mock.calls[0][1] as any;
+      const baseMock = {
+        provideDefinition: jest.fn().mockReturnValue(["DEF"]),
+      };
+      provider.base = baseMock;
+      const result = provider.provideDefinition(fakeDoc, pos, token);
+      assert.deepStrictEqual(result, ["DEF"]);
+      assert.ok(baseMock.provideDefinition.mock.calls.length > 0);
+    });
+
+    it("FilteredQuickFixProvider: isExcludedFile=true → 空配列を返す", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      const provider = registerCodeActionsProvider.mock.calls[0][1] as any;
+      const result = provider.provideCodeActions(
+        fakeDoc,
+        {} as any,
+        {} as any,
+        token
+      );
+      assert.deepStrictEqual(result, []);
+    });
+
+    it("FilteredQuickFixProvider: isExcludedFile=false → base.provideCodeActions が呼ばれる", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+      const provider = registerCodeActionsProvider.mock.calls[0][1] as any;
+      const baseMock = {
+        provideCodeActions: jest.fn().mockReturnValue(["ACTION"]),
+      };
+      provider.base = baseMock;
+      const result = provider.provideCodeActions(
+        fakeDoc,
+        {} as any,
+        {} as any,
+        token
+      );
+      assert.deepStrictEqual(result, ["ACTION"]);
+      assert.ok(baseMock.provideCodeActions.mock.calls.length > 0);
+    });
+
+    it("FilteredCompletionProvider: isExcludedFile=true → undefined を返す", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(true);
+      const provider = registerCompletionItemProvider.mock.calls[0][1] as any;
+      const result = provider.provideCompletionItems(
+        fakeDoc,
+        pos,
+        token,
+        {} as any
+      );
+      assert.strictEqual(result, undefined);
+    });
+
+    it("FilteredCompletionProvider: isExcludedFile=false → base.provideCompletionItems が呼ばれる", () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+      const provider = registerCompletionItemProvider.mock.calls[0][1] as any;
+      const baseMock = {
+        provideCompletionItems: jest.fn().mockReturnValue("COMP"),
+      };
+      provider.base = baseMock;
+      const result = provider.provideCompletionItems(
+        fakeDoc,
+        pos,
+        token,
+        {} as any
+      );
+      assert.strictEqual(result, "COMP");
+      assert.ok(baseMock.provideCompletionItems.mock.calls.length > 0);
+    });
   });
 });

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { Diagnostic, DiagnosticSeverity, Range } from "vscode";
 import {
   loadPropertyDefinitions,
   getCustomPatterns,
@@ -11,7 +12,9 @@ export async function validateProperties(
   diagnostics: vscode.DiagnosticCollection,
   customGlobs: string[] = []
 ): Promise<void> {
-  outputChannel.appendLine(`🔔 validateProperties start: ${JSON.stringify(customGlobs)}`);
+  outputChannel.appendLine(
+    `🔔 validateProperties start: ${JSON.stringify(customGlobs)}`
+  );
   await loadPropertyDefinitions(customGlobs);
 
   const text = document.getText();
@@ -42,5 +45,41 @@ export async function validateProperties(
   }
 
   diagnostics.set(document.uri, errors);
-  outputChannel.appendLine(`✅ Properties validation completed: ${errors.length} errors`);
+  outputChannel.appendLine(
+    `✅ Properties validation completed: ${errors.length} errors`
+  );
+}
+
+export function validateMessagePlaceholders(
+  key: string,
+  value: string,
+  range: Range
+): Diagnostic | null {
+  const placeholderRegex = /\{(\d+)\}/g;
+  const found = new Set<number>();
+  let match: RegExpExecArray | null;
+
+  while ((match = placeholderRegex.exec(value)) !== null) {
+    found.add(parseInt(match[1], 10));
+  }
+
+  if (found.size === 0) {
+    return null;
+  }
+
+  const indices = Array.from(found).sort((a, b) => a - b);
+
+  // チェック条件: {0} が含まれているか ＆ 連番になっているか
+  if (indices[0] !== 0 || !indices.every((v, i) => v === i)) {
+    return {
+      message: `メッセージ内のプレースホルダー {n} は {0} から始まり連番である必要がありますが、不正な順番です: {${indices.join(
+        "}, {"
+      )}}`,
+      range,
+      severity: DiagnosticSeverity.Error,
+      source: "PropertyValidator",
+    };
+  }
+
+  return null;
 }

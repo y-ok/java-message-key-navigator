@@ -276,9 +276,14 @@ describe("validatePlaceholders", () => {
     getMessageValueForKey.mockResolvedValue("Hi {2}");
 
     await validatePlaceholders(doc, collection);
-    assert.strictEqual(seen.length, 1);
-    assert.strictEqual(seen[0].length, 1);
-    expect(seen[0][0].message).toMatch(/Placeholder count|argument count/);
+
+    const messages = seen.flat().map((d) => d.message);
+
+    // どちらのエラーも含まれているか確認
+    expect(messages.some((m) => /プレースホルダー.*\{2\}/.test(m))).toBe(true);
+    expect(
+      messages.some((m) => /Placeholder count.*argument count/.test(m))
+    ).toBe(true);
   });
 
   it("エスケープされた波括弧（\\{notReal\\}）はプレースホルダーとみなされず診断されないこと", async () => {
@@ -375,5 +380,66 @@ describe("validatePlaceholders", () => {
     // collection.set は呼ばれているが、診断リストは空
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("引数が存在しない場合（parts.length === 0）はスキップされる", async () => {
+    // 1) 準備: Java ドキュメント、パターン "foo"
+    patterns = ["foo"];
+    text = `foo()`; // 引数リストが空 → argString === "" → safeSplit() は []
+    offset = 0;
+
+    // 2) getMessageValue は返しても返さなくても良い（parts.length===0 で先に continue）
+    getMessageValueForKey.mockResolvedValue("Value {0}");
+
+    // 3) 実行
+    await validatePlaceholders(doc, collection);
+
+    // 4) 検証: diagnostics は空配列が1回セットされるだけ
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  function getDiagnosticMessages(): string[] {
+    return seen.flat().map((d) => d.message);
+  }
+
+  it("プレースホルダーが {0} から始まらない場合は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A")`;
+    getMessageValueForKey.mockResolvedValue("Hello {1}");
+
+    await validatePlaceholders(doc, collection);
+
+    const messages = getDiagnosticMessages();
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages.some((m) => /プレースホルダー.*\{1\}/.test(m))).toBe(true);
+  });
+
+  it("プレースホルダーが連番でない場合（飛び番号）に診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B", "C")`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {2}");
+
+    await validatePlaceholders(doc, collection);
+
+    const messages = getDiagnosticMessages();
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages.some((m) => /プレースホルダー.*\{0\}.*\{2\}/.test(m))).toBe(
+      true
+    );
+  });
+
+  it("プレースホルダーが {2}, {3}, {5} のように連続しない場合に診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B", "C", "D", "E")`;
+    getMessageValueForKey.mockResolvedValue("X {2} Y {3} Z {5}");
+
+    await validatePlaceholders(doc, collection);
+
+    const messages = getDiagnosticMessages();
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages.some((m) => /プレースホルダー.*\{2\}.*\{5\}/.test(m))).toBe(
+      true
+    );
   });
 });

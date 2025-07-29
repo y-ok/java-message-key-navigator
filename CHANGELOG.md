@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.8] - 2025-07-29
+
+### Added
+
+* Validation to ensure message placeholders (e.g. `{0}`, `{1}`, …) in `.properties` values:
+
+  * Start from `{0}`,
+  * Are sequential (e.g. `{0}, {1}, {2}` is valid, but `{1}` or `{0}, {2}` is invalid).
+* When placeholder format is incorrect, a new diagnostic message is shown:
+
+  ```
+  ⚠️ プレースホルダーは {0} から始まり連番である必要がありますが、不正な順序です: {1}, {3}
+  ```
+
+### Changed
+
+* Enhanced `validatePlaceholders` to emit multiple diagnostics if:
+
+  * The argument count does not match the placeholder count, and
+  * The placeholder numbering is incorrect.
+* Hardened all related tests to:
+
+  * Allow multiple diagnostics per source line,
+  * Match error messages by pattern instead of fixed count,
+  * Ensure consistent `C1` (branch) coverage for `validateMessagePlaceholders`.
+* Bumped extension version to **1.0.8**.
+
+---
+
 ## [1.0.7] - 2025-07-29
 
 ### Changed

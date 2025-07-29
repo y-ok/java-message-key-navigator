@@ -15,27 +15,29 @@ export async function validatePlaceholders(
   const patterns = vscode.workspace
     .getConfiguration("java-message-key-navigator")
     .get<string[]>("messageKeyExtractionPatterns", []);
-  const regexes = patterns.map(
-    (pat) => new RegExp(`${pat}\\s*\\(`, "g")
-  );
+  const regexes = patterns.map((pat) => new RegExp(`${pat}\\s*\\(`, "g"));
 
   for (const regex of regexes) {
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       // 1. カッコ内全体を抜き出す
       const callStart = regex.lastIndex - 1; // "("の位置
-      let callEnd = callStart, depth = 0;
+      let callEnd = callStart,
+        depth = 0;
       for (let i = callStart; i < text.length; i++) {
         if (text[i] === "(") depth++;
         else if (text[i] === ")") depth--;
-        if (depth === 0) { callEnd = i; break; }
+        if (depth === 0) {
+          callEnd = i;
+          break;
+        }
       }
       const argString = text.slice(callStart + 1, callEnd);
 
       // 2. safeSplit で分割（1個目はkey, 2個目以降が引数）
       const parts = safeSplit(argString);
       if (parts.length === 0) continue;
-      const key = (parts[0].trim().replace(/^"|"$/g, ""));
+      const key = parts[0].trim().replace(/^"|"$/g, "");
       const keyOffset = text.indexOf(`"${key}"`, match.index);
       const keyPos = document.positionAt(keyOffset + 1);
       const keyRange = new vscode.Range(
@@ -50,6 +52,24 @@ export async function validatePlaceholders(
       const placeholders = Array.from(
         messageValue.matchAll(/(?<!\\)\{(\d+)\}/g)
       ).map((m) => Number(m[1]));
+
+      // プレースホルダーの正当性チェック: {0} がない、不連続 など
+      if (placeholders.length > 0) {
+        const sorted = [...new Set(placeholders)].sort((a, b) => a - b);
+        const isContinuous = sorted[0] === 0 && sorted.every((v, i) => v === i);
+        if (!isContinuous) {
+          diagnostics.push(
+            new vscode.Diagnostic(
+              keyRange,
+              `⚠️ プレースホルダーは {0} から始まり連番である必要がありますが、不正な順序です: {${sorted.join(
+                "}, {"
+              )}}`,
+              vscode.DiagnosticSeverity.Error
+            )
+          );
+        }
+      }
+
       const expectedArgCount =
         placeholders.length > 0 ? Math.max(...placeholders) + 1 : 0;
 
@@ -59,7 +79,9 @@ export async function validatePlaceholders(
         actualArgCount = 0;
       } else if (args.length === 1) {
         // 配列リテラル or join特別扱い
-        const arrayMatch = args[0].match(/new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{([\s\S]*?)}/);
+        const arrayMatch = args[0].match(
+          /new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{([\s\S]*?)}/
+        );
         if (arrayMatch) {
           const arr = safeSplit(arrayMatch[1]);
           if (arr.length === 1 && /\.join\s*\(/.test(arr[0])) {

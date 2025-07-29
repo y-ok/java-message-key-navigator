@@ -135,4 +135,41 @@ describe("PropertiesDefinitionProvider", () => {
     expect(res).toBeNull();
     expect(utils.findPropertyLocation).not.toHaveBeenCalled();
   });
+
+  it("異常系: key が空文字列だと continue され findPropertyLocation が呼ばれず null を返す", async () => {
+    const text = 'log("")';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    // offsetAt は何でもよい (continue 前にキー空チェック)
+    (doc.offsetAt as jest.Mock).mockReturnValue(0);
+
+    // 空文字列もキャプチャできる regex
+    const regex = /log\("([^"]*)"\)/g;
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([regex]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
+    });
+
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeNull();
+    // findPropertyLocation は一度も呼ばれないはず
+    expect(utils.findPropertyLocation).not.toHaveBeenCalled();
+  });
+
+  it("異常系: key はマッチするが offset が終了位置より大きく continue されnull", async () => {
+    const text = 'log("ABC")';
+    (doc.getText as jest.Mock).mockReturnValue(text);
+    // match.index=0, key="ABC", start=5,end=8 → offset を 9 にして end を超える
+    (doc.offsetAt as jest.Mock).mockReturnValue(9);
+
+    const regex = /log\("([^"]+)"\)/g;
+    (utils.getCustomPatterns as jest.Mock).mockReturnValue([regex]);
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: () => [],
+    });
+    // findPropertyLocation が呼ばれないことを検証したいので返り値不要
+
+    const res = await provider.provideDefinition(doc as any, position);
+    expect(res).toBeNull();
+    expect(utils.findPropertyLocation).not.toHaveBeenCalled();
+  });
 });
