@@ -73,6 +73,40 @@ export async function validatePlaceholders(
       const expectedArgCount =
         placeholders.length > 0 ? Math.max(...placeholders) + 1 : 0;
 
+      // === 例外引数除外ロジック ===
+      if (args.length > 1) {
+        const lastArg = args[args.length - 1].trim();
+        const prevArg = args[args.length - 2].trim();
+
+        const isSingleVar = /^[A-Za-z_$][\w$]*$/.test(lastArg);
+        const prevIsArrayLiteral =
+          /^new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{[\s\S]*}$/.test(
+            prevArg
+          );
+        const prevIsJoinCall = /\.join\s*\(/.test(prevArg);
+
+        if (isSingleVar) {
+          if (prevIsArrayLiteral) {
+            // 配列直後の末尾変数は常に例外扱いで除外
+            args.pop();
+          } else if (!prevIsJoinCall) {
+            // 純 varargs
+            const precedingCount = args.length - 1; // ex を除いた個数
+            // 2パターンで除外する：
+            // 1) 先行が2個以上（"A","B",ex など）…常に除外（ex を例外として扱う）
+            // 2) 先行が1個 かつ プレースホルダーが1個（"A",ex × "Hi {0}"）…一致させるために除外
+            if (
+              precedingCount >= 2 ||
+              (precedingCount === 1 && expectedArgCount === 1)
+            ) {
+              args.pop();
+            }
+            // ※ prev が join() のときはこの分岐に入らないので除外しない
+          }
+          // varargs の直前が join() のとき（join(), ex）は除外しない
+        }
+      }
+
       // 4. 引数カウント
       let actualArgCount = 0;
       if (args.length === 0 || (args.length === 1 && args[0].trim() === "")) {
@@ -124,10 +158,13 @@ function safeSplit(argString: string): string[] {
   let buffer = "";
   let inQuotes = false;
   let quoteChar = "";
-  let parenDepth = 0;
+  let parenDepth = 0; // ()
+  let braceDepth = 0; // {}
+  let bracketDepth = 0; // []
 
   for (let i = 0; i < argString.length; i++) {
     const ch = argString[i];
+
     if (inQuotes) {
       buffer += ch;
       if (ch === quoteChar && argString[i - 1] !== "\\") {
@@ -136,12 +173,14 @@ function safeSplit(argString: string): string[] {
       }
       continue;
     }
+
     if (ch === '"' || ch === "'") {
       inQuotes = true;
       quoteChar = ch;
       buffer += ch;
       continue;
     }
+
     if (ch === "(") {
       parenDepth++;
       buffer += ch;
@@ -152,15 +191,42 @@ function safeSplit(argString: string): string[] {
       buffer += ch;
       continue;
     }
-    if (ch === "," && parenDepth === 0) {
+    if (ch === "{") {
+      braceDepth++;
+      buffer += ch;
+      continue;
+    }
+    if (ch === "}") {
+      braceDepth--;
+      buffer += ch;
+      continue;
+    }
+    if (ch === "[") {
+      bracketDepth++;
+      buffer += ch;
+      continue;
+    }
+    if (ch === "]") {
+      bracketDepth--;
+      buffer += ch;
+      continue;
+    }
+
+    // トップレベルのカンマのみで分割
+    if (
+      ch === "," &&
+      parenDepth === 0 &&
+      braceDepth === 0 &&
+      bracketDepth === 0
+    ) {
       result.push(buffer.trim());
       buffer = "";
       continue;
     }
+
     buffer += ch;
   }
-  if (buffer.trim() !== "") {
-    result.push(buffer.trim());
-  }
+
+  if (buffer.trim() !== "") result.push(buffer.trim());
   return result;
 }

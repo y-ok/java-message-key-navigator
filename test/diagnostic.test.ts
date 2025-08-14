@@ -307,6 +307,157 @@ describe("validatePlaceholders", () => {
     expect(seen[0][0].message).toMatch(/Placeholder count|argument count/);
   });
 
+  it("配列 + 例外引数（ex）がある場合は診断されないこと", async () => {
+    patterns = ["log"];
+
+    // 1) 要素1個 + ex
+    text = `log("MSG", new Object[] { "A" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+
+    // 2) 要素2個 + ex
+    text = `log("MSG", new Object[] { "A", "B" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+
+    // 3) 要素3個 + ex
+    text = `log("MSG", new Object[] { "A", "B", "C" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("join() + 例外引数では診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { task.join(","), "X" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("varargs形式で最後が例外引数の場合は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("プレースホルダー1個・引数1個 + 例外は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { "A" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("プレースホルダー1個・引数2個 + 例外は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { "A", "B" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 1);
+  });
+
+  it("最後が単一変数名でも直前が配列/joinでない場合は除外されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("プレースホルダー番号が重複しても最大番号+1を期待値に使うこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B")`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {1}");
+    await validatePlaceholders(doc, collection);
+    // {0}と{1}なので expectedArgCount=2 → 実際2で一致、診断なし
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("配列リテラル + ex は診断されないこと（要素1個）", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { "A" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("配列リテラル + ex は診断されないこと（要素3個）", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { "A", "B", "C" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("join() + ex は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", taskList.join(","), ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("join() + 他引数 + ex は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { task.join(","), "B" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("varargs + ex は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("引数1個 + ex（配列/joinではない）は除外されず診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
+  it("配列リテラル + ex だが要素数がプレースホルダー数と不一致の場合は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", new Object[] { "A" }, ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 1);
+  });
+
+  it("join() + ex だがプレースホルダー数が多すぎる場合は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", taskList.join(","), ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 1);
+  });
+
+  it("varargs + ex だがプレースホルダー数が多すぎる場合は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", "B", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 1);
+  });
+
+  it("最後が単一変数名だが varargs 形式でプレースホルダー一致する場合は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", "A", ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.pop()!.length, 0);
+  });
+
   it("配列初期化の前にブロックコメントがあっても正しく解析され診断されないこと", async () => {
     patterns = ["log"];
     text = `log("MSG", /* コメント */ new Object[] { "A" })`;
