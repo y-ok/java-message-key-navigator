@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.10] - 2025-10-26
+
+### Added
+- New command **“Java Message Key Navigator: Validate All Files”**  
+  → Scans all Java files under `src/main/java` and validates:
+  - Undefined message keys (`validateProperties`)
+  - Placeholder count and numbering (`validatePlaceholders`)
+- Automatically excludes test, generated, and build directories from validation.
+- Command is available via the Command Palette (`Ctrl+Shift+P` → “Validate All Files”).
+
+### Changed
+- Updated test suite (`extension.test.ts`) to fully cover the new `validateAll` command:
+  - Normal case: all files validated and completion message shown.
+  - Excluded files are skipped correctly.
+  - Validation continues even if one file fails to open.
+- Updated `package.json` to register the new command.
+- Bumped extension version to **1.0.10**.
+
+---
+
 ## [1.0.8] - 2025-07-29
 
 ### Added
