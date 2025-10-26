@@ -188,6 +188,52 @@ export async function activate(
     )
   );
 
+  // === Validate all Java files in the workspace ===
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "java-message-key-navigator.validateAll",
+      async () => {
+        outputChannel.appendLine("🔍 Starting full project validation...");
+
+        const includePattern = "**/src/main/java/**/*.java";
+        const excludePattern =
+          "**/{test,tests,src/test/**,src/generated/**,build/**,out/**,target/**}/**";
+        const files = await vscode.workspace.findFiles(
+          includePattern,
+          excludePattern
+        );
+        const diagnostics = vscode.languages.createDiagnosticCollection(
+          "java-message-key-navigator.validateAll"
+        );
+        diagnostics.clear();
+
+        let checked = 0;
+        for (const file of files) {
+          try {
+            const document = await vscode.workspace.openTextDocument(file);
+            if (isExcludedFile(file.fsPath)) {
+              continue;
+            }
+            await validateProperties(document, diagnostics, propertyFileGlobs);
+            await validatePlaceholders(document, diagnostics);
+            checked++;
+          } catch (err) {
+            outputChannel.appendLine(
+              `[Error] Failed to validate ${file.fsPath}: ${err}`
+            );
+          }
+        }
+
+        outputChannel.appendLine(
+          `✅ Validation completed: ${checked} Java files checked.`
+        );
+        vscode.window.showInformationMessage(
+          `✅ Validation completed for ${checked} Java files`
+        );
+      }
+    )
+  );
+
   // Diagnostics
   const propDiagnostics =
     vscode.languages.createDiagnosticCollection("messages");

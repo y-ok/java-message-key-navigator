@@ -8,7 +8,11 @@ const showTextDocument = jest.fn();
 const applyEdit = jest.fn();
 const openTextDocument = jest.fn();
 const asRelativePath = jest.fn((uri) => uri.fsPath);
-const createDiagnosticCollection = jest.fn(() => ({ dispose: jest.fn() }));
+const createDiagnosticCollection = jest.fn(() => ({
+  clear: jest.fn(),
+  set: jest.fn(),
+  dispose: jest.fn(),
+}));
 const registerHoverProvider = jest.fn();
 const registerDefinitionProvider = jest.fn();
 const registerCodeActionsProvider = jest.fn();
@@ -528,6 +532,111 @@ describe("activate", () => {
         0
       );
     });
+  });
+
+  it("全Javaファイル検証コマンド: validateAll が全ファイルを走査してバリデータが呼ばれる", async () => {
+    (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+    findFiles.mockResolvedValueOnce([
+      { fsPath: "/project/src/Foo.java" },
+      { fsPath: "/project/src/Bar.java" },
+    ]);
+
+    const fakeDoc1 = {
+      uri: { fsPath: "/project/src/Foo.java" },
+      languageId: "java",
+    };
+    const fakeDoc2 = {
+      uri: { fsPath: "/project/src/Bar.java" },
+      languageId: "java",
+    };
+    openTextDocument
+      .mockResolvedValueOnce(fakeDoc1)
+      .mockResolvedValueOnce(fakeDoc2);
+
+    await activate(context);
+
+    const validateAllHandler = registerCommand.mock.calls.find(
+      (c) => c[0] === "java-message-key-navigator.validateAll"
+    )[1];
+    await validateAllHandler();
+
+    assert.strictEqual(findFiles.mock.calls[0][0], "**/src/main/java/**/*.java");
+    assert.strictEqual(openTextDocument.mock.calls.length, 2);
+    assert.strictEqual(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+      2
+    );
+    assert.strictEqual(
+      (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+      2
+    );
+    assert.ok(
+      showInformationMessage.mock.calls.some(([msg]) =>
+        msg.includes("Validation completed")
+      ),
+      "Validation completion message should be shown"
+    );
+  });
+
+  it("全Javaファイル検証コマンド: isExcludedFile=true のファイルはスキップされる", async () => {
+    findFiles.mockResolvedValueOnce([
+      { fsPath: "/src/Skip.java" },
+      { fsPath: "/src/Target.java" },
+    ]);
+    (utils.isExcludedFile as jest.Mock)
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+
+    const fakeDoc = { uri: { fsPath: "/src/Target.java" }, languageId: "java" };
+    openTextDocument.mockResolvedValueOnce(fakeDoc);
+
+    await activate(context);
+    const validateAllHandler = registerCommand.mock.calls.find(
+      (c) => c[0] === "java-message-key-navigator.validateAll"
+    )[1];
+    await validateAllHandler();
+
+    assert.strictEqual(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+      1
+    );
+    assert.strictEqual(
+      (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length,
+      1
+    );
+  });
+
+  it("全Javaファイル検証コマンド: openTextDocumentで例外が発生しても処理が継続する", async () => {
+    findFiles.mockResolvedValueOnce([
+      { fsPath: "/src/ErrorFile.java" },
+      { fsPath: "/src/OkFile.java" },
+    ]);
+    openTextDocument
+      .mockRejectedValueOnce(new Error("Mock open error"))
+      .mockResolvedValueOnce({
+        uri: { fsPath: "/src/OkFile.java" },
+        languageId: "java",
+      });
+    (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+
+    await activate(context);
+    const validateAllHandler = registerCommand.mock.calls.find(
+      (c) => c[0] === "java-message-key-navigator.validateAll"
+    )[1];
+    await validateAllHandler();
+
+    assert.strictEqual(openTextDocument.mock.calls.length, 2);
+    assert.strictEqual(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
+      1
+    );
+    assert.ok(
+      (
+        require("../src/outputChannel").outputChannel.appendLine as jest.Mock
+      ).mock.calls.some(([msg]: [string]) =>
+        msg.includes("[Error] Failed to validate")
+      )
+    );
   });
 
   describe("Filtered*Provider classes", () => {
