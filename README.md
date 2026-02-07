@@ -32,12 +32,12 @@ When you use a key that doesn’t exist in any of your `.properties` files, a wa
 6. If multiple `.properties` files are present, prompts you with a dialog so you can select which file to add the new key to, giving you precise control over key organization.
 
 **Custom Extraction Patterns**
-You can configure your own regular expressions for detecting message key invocations, e.g.:
+You can configure method call identifiers used to detect message-key invocations, e.g.:
 
 ```json
 "java-message-key-navigator.messageKeyExtractionPatterns": [
-  "infrastructureLogger\\.log",
-  "appLogger\\.warn"
+  "infrastructureLogger.log",
+  "appLogger.warn"
 ]
 ```
 
@@ -58,6 +58,7 @@ Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` 
    ```java
    infrastructureLogger.log("KEY", arg1, arg2, …);
    ```  
+- 🔍 Treats common exception arguments (e.g. `e`, `ex`, `exceptionObj`) as non-placeholder arguments in logger-style calls  
 - ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction  
 
 **Annotation Key Extraction**  
@@ -78,7 +79,7 @@ Add these to your **User** or **Workspace** `settings.json`:
 
 ```jsonc
 {
-  // Which method calls carry your I18N keys (regex)
+  // Which method calls carry your I18N keys (method identifier strings)
   "java-message-key-navigator.messageKeyExtractionPatterns": [
     "infrastructureLogger.log",
     "appLogger.warn"
@@ -88,9 +89,9 @@ Add these to your **User** or **Workspace** `settings.json`:
   "java-message-key-navigator.propertyFileGlobs": [
     "src/main/resources/message*.properties",
     "src/main/resources/validation/**/*.properties"
-  ]
+  ],
 
-  // Patterns to extract I18N keys from @LogStartEnd(start="…", end="…", exception="…") annotation
+  // Regex patterns to extract I18N keys from @LogStartEnd(start="…", end="…", exception="…") annotation
   "java-message-key-navigator.annotationKeyExtractionPatterns": [
     "@LogStartEnd\\(\\s*start\\s*=\\s*\"([^\\\"]+)\"",
     "@LogStartEnd\\(.*?end\\s*=\\s*\"([^\\\"]+)\"",
@@ -101,7 +102,7 @@ Add these to your **User** or **Workspace** `settings.json`:
 
 | Setting                                   | Description                                                                                                    |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `messageKeyExtractionPatterns` (array)    | Regex patterns for method calls to scan for keys                                                               |
+| `messageKeyExtractionPatterns` (array)    | Method identifier strings used to detect target calls (e.g. `infrastructureLogger.log`)                       |
 | `annotationKeyExtractionPatterns` (array) | Regex patterns for annotations to scan for keys (e.g. values of `start`, `end`, `exception` in `@LogStartEnd`) |
 | `propertyFileGlobs` (array)               | Glob patterns for your `.properties` files to include in look-up and auto-insertion                            |
 
@@ -131,6 +132,9 @@ Add these to your **User** or **Workspace** `settings.json`:
 
 5. **Completion for Existing Keys**  
    As you type inside supported method calls, existing keys are suggested as completion candidates, letting you quickly select an existing key.
+
+6. **Validate All Java Files**  
+   Run command palette: `Java Message Key Navigator: Validate All Files` to validate all `src/main/java/**/*.java` files at once.
 
    <img src="images/sample1.png" width="600"/>
 

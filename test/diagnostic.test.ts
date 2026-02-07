@@ -157,6 +157,37 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
+  it("プレースホルダーなし + 単一例外引数 e は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", e)`;
+    getMessageValueForKey.mockResolvedValue("Hello");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("プレースホルダーなし + 単一通常引数は診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", arg1)`;
+    getMessageValueForKey.mockResolvedValue("Hello");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count|argument count/);
+  });
+
+  it("プレースホルダーなし + 単一例外引数 exceptionObj は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", exceptionObj)`;
+    getMessageValueForKey.mockResolvedValue("Hello");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
   it("プレースホルダー1個・引数1個で一致する場合は診断されないこと", async () => {
     patterns = ["log"];
     text = `log("MSG", new Object[] { "A" })`;

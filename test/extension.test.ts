@@ -170,7 +170,7 @@ describe("activate", () => {
       true
     );
     assert.strictEqual(registerCommand.mock.calls.length > 0, true);
-    assert.strictEqual(createDiagnosticCollection.mock.calls.length, 2);
+    assert.strictEqual(createDiagnosticCollection.mock.calls.length, 3);
   });
 
   it("プロパティファイル追加: globsが未設定なら警告", async () => {
@@ -560,7 +560,10 @@ describe("activate", () => {
     )[1];
     await validateAllHandler();
 
-    assert.strictEqual(findFiles.mock.calls[0][0], "**/src/main/java/**/*.java");
+    assert.strictEqual(
+      findFiles.mock.calls[0][0],
+      "**/src/main/java/**/*.java"
+    );
     assert.strictEqual(openTextDocument.mock.calls.length, 2);
     assert.strictEqual(
       (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
@@ -747,6 +750,41 @@ describe("activate", () => {
       );
       assert.strictEqual(result, "COMP");
       assert.ok(baseMock.provideCompletionItems.mock.calls.length > 0);
+    });
+
+    it("全Javaファイル検証コマンド: propertyFileGlobs が undefined の場合もデフォルト配列が使われる", async () => {
+      (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
+
+      // 1ファイルのみ用意
+      findFiles.mockResolvedValueOnce([{ fsPath: "/src/Foo.java" }]);
+      const fakeDoc = { uri: { fsPath: "/src/Foo.java" }, languageId: "java" };
+      openTextDocument.mockResolvedValueOnce(fakeDoc);
+
+      // .get() が undefined を返すようにモック（fallback発動させる）
+      mockWorkspace.getConfiguration.mockReturnValue({
+        get: jest.fn().mockReturnValue(undefined),
+      });
+
+      await activate(context);
+
+      const validateAllHandler = registerCommand.mock.calls.find(
+        (c) => c[0] === "java-message-key-navigator.validateAll"
+      )[1];
+
+      await validateAllHandler();
+
+      // 呼び出しを確認
+      expect(mockWorkspace.getConfiguration).toHaveBeenCalledWith(
+        "java-message-key-navigator"
+      );
+
+      // propertyFileGlobsLatest が [] 扱いになっても正常に validate が動くことを確認
+      expect(
+        (PropertyValidator.validateProperties as jest.Mock).mock.calls.length
+      ).toBe(1);
+      expect(
+        (diagnostic.validatePlaceholders as jest.Mock).mock.calls.length
+      ).toBe(1);
     });
   });
 });

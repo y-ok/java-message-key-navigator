@@ -12,6 +12,9 @@ import {
 } from "./utils";
 import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
+// 🔹 validateAll 用 DiagnosticCollection（1回だけ作って再利用）
+let projectDiagnostics: vscode.DiagnosticCollection;
+
 class FilteredHoverProvider implements vscode.HoverProvider {
   constructor(private base: vscode.HoverProvider) {}
   provideHover(
@@ -87,6 +90,13 @@ export async function activate(
   outputChannel.appendLine("✅ Java Message Key Navigator is now active");
 
   const selector = { language: "java", scheme: "file" } as const;
+
+  // 🔹 validateAll 専用 DiagnosticCollection を1回だけ作成
+  projectDiagnostics = vscode.languages.createDiagnosticCollection(
+    "java-message-key-navigator.validateAll"
+  );
+  context.subscriptions.push(projectDiagnostics);
+
   context.subscriptions.push(
     // HoverProvider
     vscode.languages.registerHoverProvider(
@@ -202,20 +212,30 @@ export async function activate(
           includePattern,
           excludePattern
         );
-        const diagnostics = vscode.languages.createDiagnosticCollection(
-          "java-message-key-navigator.validateAll"
-        );
-        diagnostics.clear();
+
+        // 🔹 以前の診断結果をクリア（新しい collection は作らない）
+        projectDiagnostics.clear();
 
         let checked = 0;
+
+        // 🔹 設定値を再取得（設定変更を反映させるため）
+        const propertyFileGlobsLatest: string[] =
+          vscode.workspace
+            .getConfiguration("java-message-key-navigator")
+            .get<string[]>("propertyFileGlobs", []) ?? [];
+
         for (const file of files) {
           try {
             const document = await vscode.workspace.openTextDocument(file);
             if (isExcludedFile(file.fsPath)) {
               continue;
             }
-            await validateProperties(document, diagnostics, propertyFileGlobs);
-            await validatePlaceholders(document, diagnostics);
+            await validateProperties(
+              document,
+              projectDiagnostics,
+              propertyFileGlobsLatest
+            );
+            await validatePlaceholders(document, projectDiagnostics);
             checked++;
           } catch (err) {
             outputChannel.appendLine(
@@ -242,7 +262,7 @@ export async function activate(
   context.subscriptions.push(propDiagnostics, phDiagnostics);
 
   // バリデーション（ファイルオープン・変更・保存・エディタ切替時）
-  let validationTimeout: NodeJS.Timeout;
+  let validationTimeout: ReturnType<typeof setTimeout>;
   const scheduleAll = (doc: vscode.TextDocument) => {
     if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
       return;

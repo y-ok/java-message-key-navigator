@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.11] - 2026-02-07
+
+### Changed
+- Bumped extension version to **1.0.11**.
+- Improved placeholder validation in `diagnostic.ts` to avoid false positives for logger-style exception arguments when message placeholders are zero:
+  - `log("KEY", e)`, `log("KEY", ex)`, `log("KEY", exceptionObj)` and similar names containing `exception` / `throwable` / `cause` / `error` are treated as non-placeholder arguments.
+- Refined `validateAll` flow in `extension.ts`:
+  - Reuses a dedicated `DiagnosticCollection` instead of recreating it per command run.
+  - Reloads latest `propertyFileGlobs` configuration at command execution time.
+  - Updated timeout typing to `ReturnType<typeof setTimeout>` for cross-runtime compatibility.
+- Updated `README.md` to align with implementation details:
+  - Clarified `messageKeyExtractionPatterns` as method identifier strings (with examples such as `infrastructureLogger.log`).
+  - Added note about exception-argument handling in placeholder validation.
+  - Documented the `Validate All Files` command usage.
+  - Fixed JSONC configuration sample formatting.
+
+### Added
+- Added regression tests in `test/diagnostic.test.ts` for:
+  - no diagnostic on `log("MSG", e)` with zero placeholders,
+  - no diagnostic on `log("MSG", exceptionObj)` with zero placeholders,
+  - diagnostic remains for normal single argument (e.g. `log("MSG", arg1)`).
+- Extended `test/extension.test.ts` to cover `validateAll` behavior with updated diagnostic collection handling and `propertyFileGlobs` fallback.
+
+---
+
 ## [1.0.10] - 2025-10-26
 
 ### Added

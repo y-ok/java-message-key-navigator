@@ -1,9 +1,6 @@
 import * as vscode from "vscode";
 import { getMessageValueForKey } from "./utils";
 
-/**
- * テスト完全対応のプレースホルダー検証
- */
 export async function validatePlaceholders(
   document: vscode.TextDocument,
   collection: vscode.DiagnosticCollection
@@ -74,6 +71,16 @@ export async function validatePlaceholders(
         placeholders.length > 0 ? Math.max(...placeholders) + 1 : 0;
 
       // === 例外引数除外ロジック ===
+      if (
+        expectedArgCount === 0 &&
+        args.length === 1 &&
+        isLikelyExceptionArg(args[0])
+      ) {
+        // log("KEY", e) など、例外オブジェクトだけを渡すログ呼び出しは
+        // プレースホルダー検証の実引数としてはカウントしない
+        args.pop();
+      }
+
       if (args.length > 1) {
         const lastArg = args[args.length - 1].trim();
         const prevArg = args[args.length - 2].trim();
@@ -148,6 +155,20 @@ export async function validatePlaceholders(
     }
   }
   collection.set(document.uri, diagnostics);
+}
+
+function isLikelyExceptionArg(arg: string): boolean {
+  const trimmed = arg.trim();
+  const isIdentifier = /^[A-Za-z_$][\w$]*$/.test(trimmed);
+  if (!isIdentifier) return false;
+
+  // catch (Exception e) / catch (...) ex などの短い慣用名
+  if (/^(e|ex|err|error|exception|throwable|cause)$/i.test(trimmed)) {
+    return true;
+  }
+
+  // exceptionObj / dbException / rootCause / throwableError などを許可
+  return /(exception|throwable|cause|error)/i.test(trimmed);
 }
 
 /**
