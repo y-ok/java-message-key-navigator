@@ -1,7 +1,10 @@
 # Java Message Key Navigator
 
-**Java Message Key Navigator** is a VS Code extension designed to supercharge your Java internationalization (I18N) workflow. Hover over any I18N method call to instantly preview the corresponding value from your `.properties` files, and use ⌘/Ctrl + click to jump straight to its definition. When a key is missing, you’ll see an automatic warning plus a one-click quick fix that inserts the new key in the correct sorted order—no more manual file edits or guesswork. With customizable extraction patterns and support for multiple property-file globs, this extension keeps your message keys organized and your development flow uninterrupted.
+[![GitHub release](https://img.shields.io/github/v/release/y-ok/java-message-key-navigator)](https://github.com/y-ok/java-message-key-navigator/releases)
+[![CI](https://github.com/y-ok/java-message-key-navigator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/y-ok/java-message-key-navigator/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/y-ok/java-message-key-navigator/branch/main/graph/badge.svg)](https://codecov.io/gh/y-ok/java-message-key-navigator)
 
+**Java Message Key Navigator** is a VS Code extension designed to supercharge your Java internationalization (I18N) workflow. Hover over any I18N method call to instantly preview the corresponding value from your `.properties` files, and use ⌘/Ctrl + click to jump straight to its definition. When a key is missing, you’ll see an automatic warning plus a one-click quick fix that inserts the new key in the correct sorted order—no more manual file edits or guesswork. With customizable extraction patterns and support for multiple property-file globs, this extension keeps your message keys organized and your development flow uninterrupted.
 
 ---
 
@@ -24,7 +27,7 @@ Use ⌘ Click (macOS) or Ctrl Click to jump directly to the line in your `.prope
 **Undefined Key Detection & Quick Fixes**
 When you use a key that doesn’t exist in any of your `.properties` files, a warning will appear automatically. The extension offers a quick fix that:
 
-1. Resolves your property file globs or paths to actual `.properties` files.
+1. Resolves your configured `propertyFileGlobs` to actual `.properties` files.
 2. Reads each file line by line, strips comments and blank lines, and builds a list of existing keys.
 3. Checks for duplicate keys, aborting with a warning if the key already exists.
 4. Determines the correct insertion position by finding the first existing key lexicographically greater than your new key — for example, inserting `PLF4997` before `PLF4998` if needed.
@@ -41,6 +44,10 @@ You can configure method call identifiers used to detect message-key invocations
 ]
 ```
 
+Hover, Go to Definition, and undefined-key validation also recognize
+`messageSource.getMessage(...)` automatically.
+Completion and placeholder validation use only the patterns you configure.
+
 **Multi-File Support**
 The extension supports multiple `.properties` files specified using glob patterns, for example:
 
@@ -52,14 +59,17 @@ The extension supports multiple `.properties` files specified using glob pattern
 ```
 
 **Placeholder Count Validation**  
-Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` value does not match the number of arguments you pass in code.  
-- 🔍 Supports array literals like `new Object[] {…}`, `new String[] {…}`, etc.  
-- 🔍 Also supports varargs calls such as  
-   ```java
-   infrastructureLogger.log("KEY", arg1, arg2, …);
-   ```  
-- 🔍 Treats common exception arguments (e.g. `e`, `ex`, `exceptionObj`) as non-placeholder arguments in logger-style calls  
-- ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction  
+Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` value does not match the number of arguments you pass in code.
+
+- 🔍 Supports array literals like `new Object[] {…}`, `new String[] {…}`, etc.
+- 🔍 Also supports varargs calls such as
+
+  ```java
+  infrastructureLogger.log("KEY", arg1, arg2, …);
+  ```
+
+- 🔍 Treats common exception arguments (e.g. `e`, `ex`, `exceptionObj`) as non-placeholder arguments in logger-style calls
+- ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction
 
 **Annotation Key Extraction**  
 Define regular-expression patterns to pull keys out of annotation attributes. For example, to treat the `start`, `end` and `exception` values in your
@@ -82,27 +92,27 @@ Add these to your **User** or **Workspace** `settings.json`:
   // Which method calls carry your I18N keys (method identifier strings)
   "java-message-key-navigator.messageKeyExtractionPatterns": [
     "infrastructureLogger.log",
-    "appLogger.warn"
+    "appLogger.warn",
   ],
 
   // Which .properties files to read & write (glob patterns)
   "java-message-key-navigator.propertyFileGlobs": [
     "src/main/resources/message*.properties",
-    "src/main/resources/validation/**/*.properties"
+    "src/main/resources/validation/**/*.properties",
   ],
 
   // Regex patterns to extract I18N keys from @LogStartEnd(start="…", end="…", exception="…") annotation
   "java-message-key-navigator.annotationKeyExtractionPatterns": [
     "@LogStartEnd\\(\\s*start\\s*=\\s*\"([^\\\"]+)\"",
     "@LogStartEnd\\(.*?end\\s*=\\s*\"([^\\\"]+)\"",
-    "@LogStartEnd\\(.*?exception\\s*=\\s*\"([^\\\"]+)\""
-  ]
+    "@LogStartEnd\\(.*?exception\\s*=\\s*\"([^\\\"]+)\"",
+  ],
 }
 ```
 
 | Setting                                   | Description                                                                                                    |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `messageKeyExtractionPatterns` (array)    | Method identifier strings used to detect target calls (e.g. `infrastructureLogger.log`)                       |
+| `messageKeyExtractionPatterns` (array)    | Method identifier strings used to detect target calls (e.g. `infrastructureLogger.log`)                        |
 | `annotationKeyExtractionPatterns` (array) | Regex patterns for annotations to scan for keys (e.g. values of `start`, `end`, `exception` in `@LogStartEnd`) |
 | `propertyFileGlobs` (array)               | Glob patterns for your `.properties` files to include in look-up and auto-insertion                            |
 
@@ -122,13 +132,13 @@ Add these to your **User** or **Workspace** `settings.json`:
 4. **Choose Target Property File**  
    If multiple property files are available, a dialog will appear letting you select which file the new key should be added to. This helps you manage multiple `.properties` files without manually editing each one.
 
-   <img src="images/sample2.png" width="600"/>
+   ![Quick Fix target property file selection dialog](images/sample2.png)
 
-   <img src="images/sample3.png" width="250"/>
+   ![Quick Fix property file picker](images/sample3.png)
 
-   <img src="images/sample4.png" width="500"/>
+   ![Quick Fix insertion result in properties file](images/sample4.png)
 
-   <img src="images/sample5.png" width="450"/>
+   ![Quick Fix command and editor interaction](images/sample5.png)
 
 5. **Completion for Existing Keys**  
    As you type inside supported method calls, existing keys are suggested as completion candidates, letting you quickly select an existing key.
@@ -136,7 +146,7 @@ Add these to your **User** or **Workspace** `settings.json`:
 6. **Validate All Java Files**  
    Run command palette: `Java Message Key Navigator: Validate All Files` to validate all `src/main/java/**/*.java` files at once.
 
-   <img src="images/sample1.png" width="600"/>
+   ![Validate All Java Files command output](images/sample1.png)
 
 ---
 
@@ -149,15 +159,17 @@ Add these to your **User** or **Workspace** `settings.json`:
    cd java-message-key-navigator
    npm install
    ```
+
 2. **Build & package**
 
    ```bash
    npm run build
    ```
-3. **Run in VS Code**
 
-   * Open this folder in VS Code
-   * Press **F5** to launch a fresh Extension Development Host
+3. **Run in VS Code**
+   - Open this folder in VS Code
+   - Press **F5** to launch a fresh Extension Development Host
+
 4. **Or install the VSIX**
 
    ```bash

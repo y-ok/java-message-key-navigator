@@ -12,9 +12,6 @@ import {
 } from "./utils";
 import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
-// 🔹 validateAll 用 DiagnosticCollection（1回だけ作って再利用）
-let projectDiagnostics: vscode.DiagnosticCollection;
-
 class FilteredHoverProvider implements vscode.HoverProvider {
   constructor(private base: vscode.HoverProvider) {}
   provideHover(
@@ -90,12 +87,11 @@ export async function activate(
   outputChannel.appendLine("✅ Java Message Key Navigator is now active");
 
   const selector = { language: "java", scheme: "file" } as const;
-
-  // 🔹 validateAll 専用 DiagnosticCollection を1回だけ作成
-  projectDiagnostics = vscode.languages.createDiagnosticCollection(
-    "java-message-key-navigator.validateAll"
-  );
-  context.subscriptions.push(projectDiagnostics);
+  const propDiagnostics =
+    vscode.languages.createDiagnosticCollection("messages");
+  const phDiagnostics =
+    vscode.languages.createDiagnosticCollection("placeholders");
+  context.subscriptions.push(propDiagnostics, phDiagnostics);
 
   context.subscriptions.push(
     // HoverProvider
@@ -213,8 +209,9 @@ export async function activate(
           excludePattern
         );
 
-        // 🔹 以前の診断結果をクリア（新しい collection は作らない）
-        projectDiagnostics.clear();
+        // 以前の診断結果をクリアして、全件再評価する
+        propDiagnostics.clear();
+        phDiagnostics.clear();
 
         let checked = 0;
 
@@ -232,10 +229,10 @@ export async function activate(
             }
             await validateProperties(
               document,
-              projectDiagnostics,
+              propDiagnostics,
               propertyFileGlobsLatest
             );
-            await validatePlaceholders(document, projectDiagnostics);
+            await validatePlaceholders(document, phDiagnostics);
             checked++;
           } catch (err) {
             outputChannel.appendLine(
@@ -253,13 +250,6 @@ export async function activate(
       }
     )
   );
-
-  // Diagnostics
-  const propDiagnostics =
-    vscode.languages.createDiagnosticCollection("messages");
-  const phDiagnostics =
-    vscode.languages.createDiagnosticCollection("placeholders");
-  context.subscriptions.push(propDiagnostics, phDiagnostics);
 
   // バリデーション（ファイルオープン・変更・保存・エディタ切替時）
   let validationTimeout: ReturnType<typeof setTimeout>;
