@@ -19,5 +19,3 @@ coverage/
 
 # 開発設定ファイル
 .eslintrc.js
-
-package-lock.json
