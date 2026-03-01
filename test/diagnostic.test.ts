@@ -107,6 +107,57 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
+  it("設定パターン末尾の '(' は無視して検証できること", async () => {
+    patterns = ["log("];
+    text = `log("MSG", "A")`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("先頭引数が文字列リテラルでない呼び出しはスキップすること", async () => {
+    patterns = ["MessageFormat.format"];
+    text = `MessageFormat.format(msgTemplate, a, b)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.deepStrictEqual(seen, [[]]);
+    expect(getMessageValueForKey).not.toHaveBeenCalled();
+  });
+
+  it("locale だけを補助引数に取るキー取得呼び出しはスキップすること", async () => {
+    patterns = ["LabelUtils.getLabel"];
+    text = `LabelUtils.getLabel("MSG", localeContext.getLocale())`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("末尾の locale 引数はプレースホルダー引数として数えないこと", async () => {
+    patterns = ["messageSource.getMessage"];
+    text = `messageSource.getMessage("MSG", new Object[] { "A", "B" }, Locale.JAPAN)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("重複する抽出パターンでも同じ診断は1件だけ登録されること", async () => {
+    patterns = ["log", "foo.log"];
+    text = `foo.log("MSG", a)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
   it("skips when getMessageValueForKey returns undefined", async () => {
     patterns = ["foo"];
     text = `foo("key")`;

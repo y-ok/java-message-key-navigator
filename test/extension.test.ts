@@ -170,7 +170,7 @@ describe("activate", () => {
       true
     );
     assert.strictEqual(registerCommand.mock.calls.length > 0, true);
-    assert.strictEqual(createDiagnosticCollection.mock.calls.length, 3);
+    assert.strictEqual(createDiagnosticCollection.mock.calls.length, 2);
   });
 
   it("プロパティファイル追加: globsが未設定なら警告", async () => {
@@ -560,10 +560,15 @@ describe("activate", () => {
     )[1];
     await validateAllHandler();
 
+    const propDiagnostics = createDiagnosticCollection.mock.results[0].value;
+    const phDiagnostics = createDiagnosticCollection.mock.results[1].value;
+
     assert.strictEqual(
       findFiles.mock.calls[0][0],
       "**/src/main/java/**/*.java"
     );
+    assert.strictEqual(propDiagnostics.clear.mock.calls.length, 1);
+    assert.strictEqual(phDiagnostics.clear.mock.calls.length, 1);
     assert.strictEqual(openTextDocument.mock.calls.length, 2);
     assert.strictEqual(
       (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.12] - 2026-03-01
+
+### Fixed
+- Fixed false-positive placeholder diagnostics in `diagnostic.ts`:
+  - Logger and label lookup calls with trailing locale arguments (for example `LabelUtils.getLabel("KEY", localeContext.getLocale())`) are no longer counted as placeholder arguments.
+  - Duplicate placeholder diagnostics are now deduplicated when overlapping extraction patterns match the same invocation.
+  - Placeholder validation skips non-string first arguments such as `MessageFormat.format(msgTemplate, ...)`.
+- Fixed duplicate diagnostics during `Validate All Files` by reusing the normal `messages` / `placeholders` diagnostic collections instead of a separate collection.
+
+### Changed
+- Bumped extension version to **1.0.12**.
+- Added GitHub Actions CI with lint, tests, coverage artifact upload, and Codecov upload.
+- Updated `README.md`:
+  - Added release / CI / coverage badges.
+  - Replaced inline HTML images with Markdown images and added alt text.
+  - Clarified configuration behavior differences for extraction patterns.
+
+### Added
+- Added regression tests covering:
+  - trailing locale arguments,
+  - duplicate extraction pattern matches,
+  - pattern normalization with a trailing `(`.
+- Added root `tsconfig.json` so editors resolve the test configuration consistently.
+
 ## [1.0.11] - 2026-02-07
 
 ### Changed

@@ -12,6 +12,9 @@ coverage/
 # Git & CI/CD 関連
 .git/
 .github/
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
 .vscode/
 
 # 開発設定ファイル

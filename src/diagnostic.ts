@@ -7,14 +7,19 @@ export async function validatePlaceholders(
 ) {
   if (document.languageId !== "java") return;
   const diagnostics: vscode.Diagnostic[] = [];
+  const seenDiagnostics = new Set<string>();
   const text = document.getText();
 
   const patterns = vscode.workspace
     .getConfiguration("java-message-key-navigator")
     .get<string[]>("messageKeyExtractionPatterns", []);
-  const regexes = patterns.map((pat) => new RegExp(`${pat}\\s*\\(`, "g"));
+  const regexes = patterns
+    .map(normalizeMethodPattern)
+    .filter((pat) => pat.length > 0)
+    .map((pat) => new RegExp(`(?<![\\w$])${escapeRegExp(pat)}\\s*\\(`, "g"));
 
   for (const regex of regexes) {
+    regex.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       // 1. カッコ内全体を抜き出す
@@ -34,14 +39,23 @@ export async function validatePlaceholders(
       // 2. safeSplit で分割（1個目はkey, 2個目以降が引数）
       const parts = safeSplit(argString);
       if (parts.length === 0) continue;
-      const key = parts[0].trim().replace(/^"|"$/g, "");
-      const keyOffset = text.indexOf(`"${key}"`, match.index);
-      const keyPos = document.positionAt(keyOffset + 1);
+      const firstArg = parts[0].trim();
+      const keyMatch = firstArg.match(/^(['"])([\s\S]*)\1$/);
+      if (!keyMatch) continue;
+
+      const key = keyMatch[2];
+      const firstArgOffset = text.indexOf(firstArg, match.index);
+      const keyPos = document.positionAt(firstArgOffset + 1);
       const keyRange = new vscode.Range(
         keyPos,
         keyPos.translate(0, key.length)
       );
       const args = parts.slice(1);
+
+      const removedLocaleArg = stripTrailingLocaleArg(args);
+      if (removedLocaleArg && args.length === 0) {
+        continue;
+      }
 
       // 3. プレースホルダー数を算出
       const messageValue = await getMessageValueForKey(key);
@@ -55,7 +69,9 @@ export async function validatePlaceholders(
         const sorted = [...new Set(placeholders)].sort((a, b) => a - b);
         const isContinuous = sorted[0] === 0 && sorted.every((v, i) => v === i);
         if (!isContinuous) {
-          diagnostics.push(
+          pushDiagnosticOnce(
+            diagnostics,
+            seenDiagnostics,
             new vscode.Diagnostic(
               keyRange,
               `⚠️ プレースホルダーは {0} から始まり連番である必要がありますが、不正な順序です: {${sorted.join(
@@ -144,7 +160,9 @@ export async function validatePlaceholders(
         (expectedArgCount === 0 && actualArgCount > 0) ||
         (expectedArgCount > 0 && actualArgCount !== expectedArgCount)
       ) {
-        diagnostics.push(
+        pushDiagnosticOnce(
+          diagnostics,
+          seenDiagnostics,
           new vscode.Diagnostic(
             keyRange,
             `⚠️ Placeholder count (${expectedArgCount}) doesn’t match provided argument count (${actualArgCount}).`,
@@ -155,6 +173,53 @@ export async function validatePlaceholders(
     }
   }
   collection.set(document.uri, diagnostics);
+}
+
+function pushDiagnosticOnce(
+  diagnostics: vscode.Diagnostic[],
+  seenDiagnostics: Set<string>,
+  diagnostic: vscode.Diagnostic
+): void {
+  const { start, end } = diagnostic.range;
+  const key = `${start.line}:${start.character}:${end.line}:${end.character}:${diagnostic.message}`;
+  if (seenDiagnostics.has(key)) {
+    return;
+  }
+
+  seenDiagnostics.add(key);
+  diagnostics.push(diagnostic);
+}
+
+function normalizeMethodPattern(pattern: string): string {
+  return pattern.trim().replace(/\(\s*$/, "");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripTrailingLocaleArg(args: string[]): boolean {
+  if (args.length === 0) {
+    return false;
+  }
+
+  const lastArg = args[args.length - 1];
+  if (!isLikelyLocaleArg(lastArg)) {
+    return false;
+  }
+
+  args.pop();
+  return true;
+}
+
+function isLikelyLocaleArg(arg: string): boolean {
+  const trimmed = arg.trim();
+
+  return (
+    /(?:^|[.])getLocale\s*\(\s*\)\s*$/.test(trimmed) ||
+    /locale/i.test(trimmed) ||
+    /\bLocale\b/.test(trimmed)
+  );
 }
 
 function isLikelyExceptionArg(arg: string): boolean {
