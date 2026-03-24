@@ -26,7 +26,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
           .filter((g): g is string => typeof g === "string");
 
         for (const key of keys) {
-          if (!key || processedKeys.has(key)) continue;
+          if (!key || processedKeys.has(key)) {continue;}
 
           // キャプチャ文字列の開始・終了オフセットを計算
           const start = match.index + match[0].indexOf(key);

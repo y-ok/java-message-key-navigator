@@ -16,7 +16,7 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
         d.code === "undefinedMessageKey" &&
         d.range.intersection(range) !== undefined
     );
-    if (diagnostics.length === 0) return [];
+    if (diagnostics.length === 0) {return [];}
 
     // ① 診断からキー文字列を抜き取り
     const key = document.getText(range).replace(/["']/g, "").trim();

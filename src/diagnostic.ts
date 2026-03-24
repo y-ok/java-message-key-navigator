@@ -5,7 +5,7 @@ export async function validatePlaceholders(
   document: vscode.TextDocument,
   collection: vscode.DiagnosticCollection
 ) {
-  if (document.languageId !== "java") return;
+  if (document.languageId !== "java") {return;}
   const diagnostics: vscode.Diagnostic[] = [];
   const seenDiagnostics = new Set<string>();
   const text = document.getText();
@@ -27,8 +27,8 @@ export async function validatePlaceholders(
       let callEnd = callStart,
         depth = 0;
       for (let i = callStart; i < text.length; i++) {
-        if (text[i] === "(") depth++;
-        else if (text[i] === ")") depth--;
+        if (text[i] === "(") {depth++;}
+        else if (text[i] === ")") {depth--;}
         if (depth === 0) {
           callEnd = i;
           break;
@@ -38,10 +38,10 @@ export async function validatePlaceholders(
 
       // 2. safeSplit で分割（1個目はkey, 2個目以降が引数）
       const parts = safeSplit(argString);
-      if (parts.length === 0) continue;
+      if (parts.length === 0) {continue;}
       const firstArg = parts[0].trim();
       const keyMatch = firstArg.match(/^(['"])([\s\S]*)\1$/);
-      if (!keyMatch) continue;
+      if (!keyMatch) {continue;}
 
       const key = keyMatch[2];
       const firstArgOffset = text.indexOf(firstArg, match.index);
@@ -59,7 +59,7 @@ export async function validatePlaceholders(
 
       // 3. プレースホルダー数を算出
       const messageValue = await getMessageValueForKey(key);
-      if (!messageValue) continue;
+      if (!messageValue) {continue;}
       const placeholders = Array.from(
         messageValue.matchAll(/(?<!\\)\{(\d+)\}/g)
       ).map((m) => Number(m[1]));
@@ -225,7 +225,7 @@ function isLikelyLocaleArg(arg: string): boolean {
 function isLikelyExceptionArg(arg: string): boolean {
   const trimmed = arg.trim();
   const isIdentifier = /^[A-Za-z_$][\w$]*$/.test(trimmed);
-  if (!isIdentifier) return false;
+  if (!isIdentifier) {return false;}
 
   // catch (Exception e) / catch (...) ex などの短い慣用名
   if (/^(e|ex|err|error|exception|throwable|cause)$/i.test(trimmed)) {
@@ -313,6 +313,6 @@ function safeSplit(argString: string): string[] {
     buffer += ch;
   }
 
-  if (buffer.trim() !== "") result.push(buffer.trim());
+  if (buffer.trim() !== "") {result.push(buffer.trim());}
   return result;
 }

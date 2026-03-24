@@ -36,7 +36,7 @@ export async function loadPropertyDefinitions(
     );
     for (const uri of uris) {
       const fp = uri.fsPath;
-      if (!fs.existsSync(fp)) continue;
+      if (!fs.existsSync(fp)) {continue;}
       outputChannel.appendLine(`🔄 Loading properties: ${fp}`);
       const content = fs.readFileSync(fp, "utf-8");
       content
@@ -120,7 +120,7 @@ export async function findPropertyLocation(
     const uris = await vscode.workspace.findFiles(pattern);
     for (const uri of uris) {
       const fp = uri.fsPath;
-      if (!fs.existsSync(fp)) continue;
+      if (!fs.existsSync(fp)) {continue;}
       const lines = fs.readFileSync(fp, "utf-8").split(/\r?\n/);
       const idx = lines.findIndex((l) => l.trim().startsWith(`${key}=`));
       if (idx !== -1) {
@@ -258,6 +258,11 @@ export async function readPropertiesFile(
 export async function getMessageValueForKey(
   key: string
 ): Promise<string | undefined> {
+  const cached = getPropertyValue(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   for (const uri of await findPropertiesFiles()) {
     const { lines } = await readPropertiesFile(uri);
     for (const line of lines) {

@@ -28,11 +28,11 @@ export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
       let match: RegExpExecArray | null;
       while ((match = regex.exec(text)) !== null) {
         const key = match[1]?.trim();
-        if (!key) continue;
+        if (!key) {continue;}
 
         const start = match.index + match[0].indexOf(key);
         const end = start + key.length;
-        if (offset < start || offset > end) continue;
+        if (offset < start || offset > end) {continue;}
 
         outputChannel.appendLine(`✅ Jump target key: ${key}`);
 

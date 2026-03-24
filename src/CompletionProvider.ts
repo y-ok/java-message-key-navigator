@@ -28,7 +28,7 @@ export class MessageKeyCompletionProvider
     const matchesPattern = patterns.some((pattern) =>
       lineText.includes(pattern)
     );
-    if (!matchesPattern) return undefined;
+    if (!matchesPattern) {return undefined;}
 
     // 入力中の文字を取得
     const lineUntilPosition = document

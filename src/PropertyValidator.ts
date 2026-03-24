@@ -10,12 +10,15 @@ import { outputChannel } from "./outputChannel";
 export async function validateProperties(
   document: vscode.TextDocument,
   diagnostics: vscode.DiagnosticCollection,
-  customGlobs: string[] = []
+  customGlobs: string[] = [],
+  options: { reloadPropertyDefinitions?: boolean } = {}
 ): Promise<void> {
   outputChannel.appendLine(
     `🔔 validateProperties start: ${JSON.stringify(customGlobs)}`
   );
-  await loadPropertyDefinitions(customGlobs);
+  if (options.reloadPropertyDefinitions !== false) {
+    await loadPropertyDefinitions(customGlobs);
+  }
 
   const text = document.getText();
   const patterns = getCustomPatterns();
@@ -27,7 +30,7 @@ export async function validateProperties(
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
       const key = m[1]?.trim();
-      if (!key) continue;
+      if (!key) {continue;}
       const start = document.positionAt(m.index + m[0].indexOf(key));
       const end = document.positionAt(m.index + m[0].indexOf(key) + key.length);
       const range = new vscode.Range(start, end);
