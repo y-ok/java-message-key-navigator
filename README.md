@@ -176,6 +176,64 @@ Add these to your **User** or **Workspace** `settings.json`:
    code --install-extension java-message-key-navigator-(version).vsix
    ```
 
+5. **Run benchmark-based regression checks (for maintainers)**
+
+   This benchmark is for maintainers changing Java file detection, validation, and cache update logic.
+   Its purpose is to catch performance regressions in large workspaces, especially accidental fallbacks
+   from incremental revalidation to full rescans.
+
+   It exercises the extension integration path with real files on disk:
+   - `activate`
+   - `validateAll`
+   - Java file change handling
+   - `.properties` save handling
+
+   It does **not** measure a real VS Code Extension Host session or end-user editor latency.
+
+   ```bash
+   npm run benchmark
+   ```
+
+   - Strict mode:
+
+   ```bash
+   npm run benchmark:strict
+   ```
+
+   - What it checks:
+     - full-workspace validation cost at `5000` and `10000` Java files
+     - incremental Java change stays incremental instead of degrading to a full rescan
+     - `.properties` save revalidates cached Java files through the expected path
+   - Measured metrics:
+     - wall time / CPU time
+     - memory delta (RSS / heap)
+     - disk I/O bytes and call counts (read/write)
+     - open Java document count (to detect accidental full rescans)
+   - Scenarios:
+     - `integration_validate_all_5000_java`
+     - `integration_validate_all_10000_java`
+     - `integration_incremental_java_change_10000`
+     - `integration_property_save_revalidate_10000`
+   - Threshold config: `benchmark/thresholds.json`
+   - Result JSON: `dist/benchmark/last-result.json`
+   - Cleanup: `npm run clean` removes the benchmark result JSON as well
+
+6. **GitHub Actions**
+
+   - CI workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml)
+     - runs on `push` and `pull_request`
+     - executes `npm ci`, `npm run lint`, `npm test`, and `npm run build`
+     - uploads coverage and generated VSIX as workflow artifacts
+   - Release workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
+     - runs only when a version tag such as `v1.0.12` is pushed
+     - requires the pushed tag to match `package.json` version
+     - reruns lint, tests, and `npm run benchmark:strict` before release upload
+     - creates the GitHub Release if it does not exist yet, then uploads the generated VSIX
+     - publishes the extension to Visual Studio Marketplace using `VSCE_PAT`
+
+   Required repository secret:
+   - `VSCE_PAT`: Personal Access Token for Visual Studio Marketplace publishing
+
 ---
 
 ## 🛡 License

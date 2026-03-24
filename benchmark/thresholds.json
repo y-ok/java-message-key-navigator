@@ -1,0 +1,61 @@
+{
+  "profiles": {
+    "integration_validate_all_5000_java": {
+      "maxWallMs": 120000,
+      "maxCpuTotalMs": 120000,
+      "maxRssDeltaMB": 1200,
+      "maxHeapDeltaMB": 900,
+      "maxReadBytesMB": 400,
+      "maxWriteBytesMB": 30,
+      "minReadBytesMB": 0.4,
+      "minOpenJavaDocCalls": 5000,
+      "maxOpenJavaDocCalls": 5200,
+      "minThroughputPerSec": 20
+    },
+    "integration_validate_all_10000_java": {
+      "maxWallMs": 240000,
+      "maxCpuTotalMs": 240000,
+      "maxRssDeltaMB": 1800,
+      "maxHeapDeltaMB": 1400,
+      "maxReadBytesMB": 800,
+      "maxWriteBytesMB": 50,
+      "minReadBytesMB": 1,
+      "minOpenJavaDocCalls": 10000,
+      "maxOpenJavaDocCalls": 10400,
+      "minThroughputPerSec": 15
+    },
+    "integration_incremental_java_change_10000": {
+      "maxWallMs": 20000,
+      "maxCpuTotalMs": 20000,
+      "maxRssDeltaMB": 400,
+      "maxHeapDeltaMB": 300,
+      "maxReadBytesMB": 5,
+      "maxWriteBytesMB": 2,
+      "minWriteBytesMB": 0.00005,
+      "minOpenJavaDocCalls": 1,
+      "maxOpenJavaDocCalls": 3
+    },
+    "integration_property_save_revalidate_10000": {
+      "maxWallMs": 300000,
+      "maxCpuTotalMs": 300000,
+      "maxRssDeltaMB": 2000,
+      "maxHeapDeltaMB": 1500,
+      "maxReadBytesMB": 1200,
+      "maxWriteBytesMB": 20,
+      "minWriteBytesMB": 0.00001,
+      "minOpenJavaDocCalls": 10000,
+      "maxOpenJavaDocCalls": 10400,
+      "minThroughputPerSec": 12
+    }
+  },
+  "strictMultiplier": {
+    "maxMetrics": 0.8,
+    "minMetrics": 1.2
+  },
+  "dataset": {
+    "javaCount5000": 5000,
+    "javaCount10000": 10000,
+    "propertyFileCount5000": 10,
+    "propertyFileCount10000": 20
+  }
+}
