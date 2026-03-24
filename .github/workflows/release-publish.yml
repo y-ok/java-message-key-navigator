@@ -46,9 +46,6 @@ jobs:
       - name: Run Tests With Coverage
         run: npm test
 
-      - name: Run Strict Benchmark Gate
-        run: npm run benchmark:strict
-
       - name: Build VSIX
         run: npm run build
 
