@@ -1,3 +1,5 @@
+<!-- markdownlint-configure-file { "MD013": false, "MD024": { "siblings_only": true } } -->
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -7,9 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.13] - 2026-03-24
+
+### Added
+
+- Added workspace-wide Java validation caching so message-key and placeholder diagnostics also cover Java files that are not currently open in the editor.
+- Added incremental revalidation hooks for Java file changes, `.properties` updates, and relevant configuration changes.
+- Added regression tests for:
+  - cached Java validation and incremental refresh behavior,
+  - optional property-definition reload skipping in `validateProperties`,
+  - cached property value lookup fast paths.
+- Added integration benchmark tooling and thresholds for:
+  - full validation at `5000` / `10000` Java files,
+  - incremental Java change handling,
+  - `.properties` save revalidation behavior.
+- Added GitHub Actions release automation for tag-based VSIX packaging and publishing.
+
+### Changed
+
+- Bumped extension version to **1.0.13**.
+- Refined validation flow in `extension.ts` to reuse cached fingerprints and avoid unnecessary full rescans.
+- Updated benchmark output handling to write the latest JSON result under `dist/benchmark/last-result.json`.
+- Tightened VSIX packaging with `.vscodeignore` so benchmark, coverage, and other development-only files are excluded from release artifacts.
+- Updated development dependencies used by lint, test, benchmark, and packaging workflows.
+- Updated `README.md` maintenance documentation for:
+  - benchmark purpose, scope, and outputs,
+  - CI and release workflow behavior.
+
+### Fixed
+
+- Fixed the previous limitation where normal background validation only covered Java files that had been opened in the editor.
+- Fixed stale validation state by removing cached entries and diagnostics when tracked Java files disappear from the workspace.
+
 ## [1.0.12] - 2026-03-01
 
 ### Fixed
+
 - Fixed false-positive placeholder diagnostics in `diagnostic.ts`:
   - Logger and label lookup calls with trailing locale arguments (for example `LabelUtils.getLabel("KEY", localeContext.getLocale())`) are no longer counted as placeholder arguments.
   - Duplicate placeholder diagnostics are now deduplicated when overlapping extraction patterns match the same invocation.
@@ -17,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Fixed duplicate diagnostics during `Validate All Files` by reusing the normal `messages` / `placeholders` diagnostic collections instead of a separate collection.
 
 ### Changed
+
 - Bumped extension version to **1.0.12**.
 - Added GitHub Actions CI with lint, tests, coverage artifact upload, and Codecov upload.
 - Updated `README.md`:
@@ -25,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Clarified configuration behavior differences for extraction patterns.
 
 ### Added
+
 - Added regression tests covering:
   - trailing locale arguments,
   - duplicate extraction pattern matches,
@@ -34,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.11] - 2026-02-07
 
 ### Changed
+
 - Bumped extension version to **1.0.11**.
 - Improved placeholder validation in `diagnostic.ts` to avoid false positives for logger-style exception arguments when message placeholders are zero:
   - `log("KEY", e)`, `log("KEY", ex)`, `log("KEY", exceptionObj)` and similar names containing `exception` / `throwable` / `cause` / `error` are treated as non-placeholder arguments.
@@ -48,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Fixed JSONC configuration sample formatting.
 
 ### Added
+
 - Added regression tests in `test/diagnostic.test.ts` for:
   - no diagnostic on `log("MSG", e)` with zero placeholders,
   - no diagnostic on `log("MSG", exceptionObj)` with zero placeholders,
@@ -59,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.10] - 2025-10-26
 
 ### Added
+
 - New command **“Java Message Key Navigator: Validate All Files”**  
   → Scans all Java files under `src/main/java` and validates:
   - Undefined message keys (`validateProperties`)
@@ -67,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Command is available via the Command Palette (`Ctrl+Shift+P` → “Validate All Files”).
 
 ### Changed
+
 - Updated test suite (`extension.test.ts`) to fully cover the new `validateAll` command:
   - Normal case: all files validated and completion message shown.
   - Excluded files are skipped correctly.
@@ -80,41 +121,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-* Validation to ensure message placeholders (e.g. `{0}`, `{1}`, …) in `.properties` values:
+- Validation to ensure message placeholders (e.g. `{0}`, `{1}`, …) in `.properties` values:
+  - Start from `{0}`,
+  - Are sequential (e.g. `{0}, {1}, {2}` is valid, but `{1}` or `{0}, {2}` is invalid).
 
-  * Start from `{0}`,
-  * Are sequential (e.g. `{0}, {1}, {2}` is valid, but `{1}` or `{0}, {2}` is invalid).
-* When placeholder format is incorrect, a new diagnostic message is shown:
+- When placeholder format is incorrect, a new diagnostic message is shown:
 
-  ```
+  ```bash
   ⚠️ プレースホルダーは {0} から始まり連番である必要がありますが、不正な順序です: {1}, {3}
   ```
 
 ### Changed
 
-* Enhanced `validatePlaceholders` to emit multiple diagnostics if:
+- Enhanced `validatePlaceholders` to emit multiple diagnostics if:
+  - The argument count does not match the placeholder count, and
+  - The placeholder numbering is incorrect.
 
-  * The argument count does not match the placeholder count, and
-  * The placeholder numbering is incorrect.
-* Hardened all related tests to:
+- Hardened all related tests to:
+  - Allow multiple diagnostics per source line,
+  - Match error messages by pattern instead of fixed count,
+  - Ensure consistent `C1` (branch) coverage for `validateMessagePlaceholders`.
 
-  * Allow multiple diagnostics per source line,
-  * Match error messages by pattern instead of fixed count,
-  * Ensure consistent `C1` (branch) coverage for `validateMessagePlaceholders`.
-* Bumped extension version to **1.0.8**.
+- Bumped extension version to **1.0.8**.
 
 ---
 
 ## [1.0.7] - 2025-07-29
 
 ### Changed
-- Bumped extension version to **1.0.7**.  
-- Cleaned up and clarified step comments in `utils.addPropertyKey`:  
-  - Made “capture source URI” note optional,  
-  - Simplified file‐reading and key‐listing descriptions,  
-  - Renumbered insertion/map/cache/open/cursor steps,  
-  - Removed leftover debug output blocks.  
-- Always open the properties file in `ViewColumn.One` when revealing after QuickFix.  
+
+- Bumped extension version to **1.0.7**.
+- Cleaned up and clarified step comments in `utils.addPropertyKey`:
+  - Made “capture source URI” note optional,
+  - Simplified file‐reading and key‐listing descriptions,
+  - Renumbered insertion/map/cache/open/cursor steps,
+  - Removed leftover debug output blocks.
+- Always open the properties file in `ViewColumn.One` when revealing after QuickFix.
 - Streamlined cursor placement in `addPropertyKey` to use `lineAt(insertIdx)` for reliable positioning immediately after the `=`.
 
 ---
@@ -123,29 +165,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-* Bumped extension version to **1.0.6** and updated `vscode` dependency to `^1.1.37`.
-* Refactored **HoverProvider** to support multiple capture groups (e.g. `start`/`end`/`exception` in `@LogStartEnd`) and cleaned up hover-workflow logging.
-* Converted **PropertiesQuickFixProvider** to async, fetching `propertyFileGlobs` from settings, passing the target file path to the add-key command, and registering code actions accordingly.
-* Overhauled **utils.addPropertyKey** for:
+- Bumped extension version to **1.0.6** and updated `vscode` dependency to `^1.1.37`.
+- Refactored **HoverProvider** to support multiple capture groups (e.g. `start`/`end`/`exception` in `@LogStartEnd`) and cleaned up hover-workflow logging.
+- Converted **PropertiesQuickFixProvider** to async, fetching `propertyFileGlobs` from settings, passing the target file path to the add-key command, and registering code actions accordingly.
+- Overhauled **utils.addPropertyKey** for:
+  - Sorted insertion of new keys into `.properties` (preserving comments/empty lines),
+  - Cache invalidation and reload via `loadPropertyDefinitions`,
+  - Precise cursor placement immediately after the `=` on the inserted line.
 
-  * Sorted insertion of new keys into `.properties` (preserving comments/empty lines),
-  * Cache invalidation and reload via `loadPropertyDefinitions`,
-  * Precise cursor placement immediately after the `=` on the inserted line.
-* Streamlined **extension.ts** activation:
-
-  * Integrated `loadPropertyDefinitions` and `isExcludedFile` checks,
-  * Restructured the `addPropertyKey` command handler to open, edit, save, and reveal the properties file,
-  * Improved validation scheduling for properties and placeholders.
+- Streamlined **extension.ts** activation:
+  - Integrated `loadPropertyDefinitions` and `isExcludedFile` checks,
+  - Restructured the `addPropertyKey` command handler to open, edit, save, and reveal the properties file,
+  - Improved validation scheduling for properties and placeholders.
 
 ### Added
 
-* Full Jest test coverage for **utils**, **HoverProvider**, **PropertiesQuickFixProvider**, **diagnostics**, and **extension** flows, with complete VS Code API mocks for isolated unit testing.
+- Full Jest test coverage for **utils**, **HoverProvider**, **PropertiesQuickFixProvider**, **diagnostics**, and **extension** flows, with complete VS Code API mocks for isolated unit testing.
 
 ---
 
 ## [1.0.5] - 2025-07-27
 
 ### Changed
+
 - Migrated to Jest for all unit testing; removed Mocha legacy config.
 - Added comprehensive unit tests with full coverage for all major modules:
   - utils, PropertyValidator, diagnostic, CompletionProvider, HoverProvider, DefinitionProvider, PropertiesQuickFixProvider, outputChannel, and extension entrypoint.
@@ -165,6 +207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.4] - 2025-07-01
 
 ### Added
+
 - Support for extracting I18N keys from annotation attributes (e.g., `start`, `end`, `exception` in `@LogStartEnd`) via the new `annotationKeyExtractionPatterns` configuration.
 
 ---
@@ -172,6 +215,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.3] - 2025-06-30
 
 ### Added
+
 - Placeholder count validation: highlights mismatches between `{0}`, `{1}`, … placeholders in `.properties` and the number of arguments passed in code.
 - Support for generic array literal calls (`new Object[] {…}`, `new String[] {…}`, etc.) and varargs calls (e.g. `infrastructureLogger.log("KEY", arg1, arg2, …)`).
 
@@ -180,6 +224,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.2] - 2025-06-30
 
 ### Added
+
 - When an undefined message key is detected, you can now choose the target `.properties` file to insert the new key if multiple property files are present.
 - Updated usage documentation and screenshots in `README.md` to illustrate the new multi-file selection feature.
 
@@ -188,6 +233,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.1] - 2025-06-29
 
 ### Changed
+
 - Updated `README.md` with improved usage instructions and examples.
 
 ---
@@ -195,6 +241,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.0.0] - 2025-06-29
 
 ### Added
+
 - Initial release of **Java Message Key Navigator** 🎉
 - Supports navigation from `ResourceBundle.getString()` to corresponding key in `.properties` files.
 - Validation of message keys in Java source files.
