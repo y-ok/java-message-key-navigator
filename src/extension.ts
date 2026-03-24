@@ -12,6 +12,10 @@ import {
 } from "./utils";
 import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
+const JAVA_INCLUDE_PATTERN = "**/src/main/java/**/*.java";
+const JAVA_EXCLUDE_PATTERN =
+  "**/{test,tests,src/test/**,src/generated/**,build/**,out/**,target/**}/**";
+
 class FilteredHoverProvider implements vscode.HoverProvider {
   constructor(private base: vscode.HoverProvider) {}
   provideHover(
@@ -75,14 +79,23 @@ export async function activate(
 ) {
   initializeOutputChannel();
 
-  // 設定から .properties ファイルの glob パターンを取得
-  const propertyFileGlobs: string[] =
+  const getPropertyFileGlobs = (): string[] =>
     vscode.workspace
       .getConfiguration("java-message-key-navigator")
       .get<string[]>("propertyFileGlobs", []) ?? [];
 
-  // キャッシュ読み込み
-  await loadPropertyDefinitions(propertyFileGlobs);
+  const toGlobSignature = (globs: string[]): string => globs.join("\u0000");
+
+  const computeTextFingerprint = (text: string): string => {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${hash}`;
+  };
+
+  const initialPropertyFileGlobs = getPropertyFileGlobs();
+  await loadPropertyDefinitions(initialPropertyFileGlobs);
 
   outputChannel.appendLine("✅ Java Message Key Navigator is now active");
 
@@ -92,6 +105,165 @@ export async function activate(
   const phDiagnostics =
     vscode.languages.createDiagnosticCollection("placeholders");
   context.subscriptions.push(propDiagnostics, phDiagnostics);
+
+  const javaValidationCache = new Map<string, string>();
+  const validationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let propertyCacheDirty = false;
+  let propertyGlobSignature = toGlobSignature(initialPropertyFileGlobs);
+  let validationQueue: Promise<void> = Promise.resolve();
+
+  const queueValidation = (task: () => Promise<void>) => {
+    validationQueue = validationQueue.then(task).catch((err) => {
+      outputChannel.appendLine(`[Error] Validation queue failed: ${err}`);
+    });
+    return validationQueue;
+  };
+
+  const clearDiagnosticsForUri = (uri: vscode.Uri) => {
+    propDiagnostics.delete?.(uri);
+    phDiagnostics.delete?.(uri);
+  };
+
+  const clearValidationTimer = (uri: vscode.Uri) => {
+    const cacheKey = uri.fsPath;
+    const timer = validationTimers.get(cacheKey);
+    if (!timer) {return;}
+    clearTimeout(timer);
+    validationTimers.delete(cacheKey);
+  };
+
+  const validateJavaDocument = async (
+    document: vscode.TextDocument,
+    force = false
+  ): Promise<boolean> => {
+    if (document.languageId !== "java" || isExcludedFile(document.uri.fsPath)) {
+      return false;
+    }
+
+    const cacheKey = document.uri.fsPath;
+    const text =
+      typeof document.getText === "function" ? document.getText() : "";
+    const fingerprint = computeTextFingerprint(text);
+    if (!force && javaValidationCache.get(cacheKey) === fingerprint) {
+      return false;
+    }
+
+    const propertyFileGlobs = getPropertyFileGlobs();
+    const nextSignature = toGlobSignature(propertyFileGlobs);
+    if (propertyCacheDirty || propertyGlobSignature !== nextSignature) {
+      await loadPropertyDefinitions(propertyFileGlobs);
+      propertyGlobSignature = nextSignature;
+      propertyCacheDirty = false;
+    }
+
+    await validateProperties(document, propDiagnostics, propertyFileGlobs, {
+      reloadPropertyDefinitions: false,
+    });
+    await validatePlaceholders(document, phDiagnostics);
+    javaValidationCache.set(cacheKey, fingerprint);
+    return true;
+  };
+
+  const validateJavaUri = async (uri: vscode.Uri, force = false) => {
+    if (!uri.fsPath.endsWith(".java") || isExcludedFile(uri.fsPath)) {
+      return false;
+    }
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      return await validateJavaDocument(document, force);
+    } catch (err) {
+      outputChannel.appendLine(`[Error] Failed to validate ${uri.fsPath}: ${err}`);
+      return false;
+    }
+  };
+
+  const validateWorkspaceJavaFiles = async (): Promise<{
+    checked: number;
+    skipped: number;
+    total: number;
+  }> => {
+    outputChannel.appendLine("🔍 Starting full project validation...");
+    const files = await vscode.workspace.findFiles(
+      JAVA_INCLUDE_PATTERN,
+      JAVA_EXCLUDE_PATTERN
+    );
+
+    // ワークスペース全体の再評価では毎回診断を作り直す。
+    propDiagnostics.clear();
+    phDiagnostics.clear();
+
+    const propertyFileGlobs = getPropertyFileGlobs();
+    const nextSignature = toGlobSignature(propertyFileGlobs);
+    if (propertyCacheDirty || propertyGlobSignature !== nextSignature) {
+      await loadPropertyDefinitions(propertyFileGlobs);
+      propertyGlobSignature = nextSignature;
+      propertyCacheDirty = false;
+    }
+
+    const found = new Set<string>();
+    let checked = 0;
+    let skipped = 0;
+
+    for (const file of files) {
+      if (isExcludedFile(file.fsPath)) {
+        continue;
+      }
+      found.add(file.fsPath);
+      try {
+        const document = await vscode.workspace.openTextDocument(file);
+        const updated = await validateJavaDocument(document, true);
+        if (updated) {checked++;}
+        else {skipped++;}
+      } catch (err) {
+        outputChannel.appendLine(
+          `[Error] Failed to validate ${file.fsPath}: ${err}`
+        );
+      }
+    }
+
+    for (const cachedPath of Array.from(javaValidationCache.keys())) {
+      if (found.has(cachedPath)) {
+        continue;
+      }
+      javaValidationCache.delete(cachedPath);
+      const staleUri = vscode.Uri.file(cachedPath);
+      clearDiagnosticsForUri(staleUri);
+      clearValidationTimer(staleUri);
+    }
+
+    outputChannel.appendLine(
+      `✅ Validation completed: ${checked} updated, ${skipped} unchanged (${found.size} Java files).`
+    );
+    return { checked, skipped, total: found.size };
+  };
+
+  const revalidateCachedJavaFiles = async () => {
+    if (javaValidationCache.size === 0) {
+      return;
+    }
+    const propertyFileGlobs = getPropertyFileGlobs();
+    await loadPropertyDefinitions(propertyFileGlobs);
+    propertyGlobSignature = toGlobSignature(propertyFileGlobs);
+    propertyCacheDirty = false;
+    for (const fsPath of javaValidationCache.keys()) {
+      await validateJavaUri(vscode.Uri.file(fsPath), true);
+    }
+  };
+
+  const scheduleAll = (doc: vscode.TextDocument) => {
+    if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
+      return;
+    }
+    clearValidationTimer(doc.uri);
+    const timer = setTimeout(() => {
+      validationTimers.delete(doc.uri.fsPath);
+      outputChannel.appendLine("🔍 Re-validating properties and placeholders…");
+      void validateJavaDocument(doc).catch((err) => {
+        outputChannel.appendLine(`[Error] Failed to validate ${doc.uri.fsPath}: ${err}`);
+      });
+    }, 500);
+    validationTimers.set(doc.uri.fsPath, timer);
+  };
 
   context.subscriptions.push(
     // HoverProvider
@@ -190,6 +362,11 @@ export async function activate(
         vscode.window.showInformationMessage(
           `✅ Key "${key}" added to ${selected.label}`
         );
+
+        propertyCacheDirty = true;
+        await queueValidation(async () => {
+          await revalidateCachedJavaFiles();
+        });
       }
     )
   );
@@ -199,80 +376,112 @@ export async function activate(
     vscode.commands.registerCommand(
       "java-message-key-navigator.validateAll",
       async () => {
-        outputChannel.appendLine("🔍 Starting full project validation...");
-
-        const includePattern = "**/src/main/java/**/*.java";
-        const excludePattern =
-          "**/{test,tests,src/test/**,src/generated/**,build/**,out/**,target/**}/**";
-        const files = await vscode.workspace.findFiles(
-          includePattern,
-          excludePattern
-        );
-
-        // 以前の診断結果をクリアして、全件再評価する
-        propDiagnostics.clear();
-        phDiagnostics.clear();
-
-        let checked = 0;
-
-        // 🔹 設定値を再取得（設定変更を反映させるため）
-        const propertyFileGlobsLatest: string[] =
-          vscode.workspace
-            .getConfiguration("java-message-key-navigator")
-            .get<string[]>("propertyFileGlobs", []) ?? [];
-
-        for (const file of files) {
-          try {
-            const document = await vscode.workspace.openTextDocument(file);
-            if (isExcludedFile(file.fsPath)) {
-              continue;
-            }
-            await validateProperties(
-              document,
-              propDiagnostics,
-              propertyFileGlobsLatest
-            );
-            await validatePlaceholders(document, phDiagnostics);
-            checked++;
-          } catch (err) {
-            outputChannel.appendLine(
-              `[Error] Failed to validate ${file.fsPath}: ${err}`
-            );
-          }
-        }
-
-        outputChannel.appendLine(
-          `✅ Validation completed: ${checked} Java files checked.`
-        );
-        vscode.window.showInformationMessage(
-          `✅ Validation completed for ${checked} Java files`
-        );
+        await queueValidation(async () => {
+          const { checked } = await validateWorkspaceJavaFiles();
+          vscode.window.showInformationMessage(
+            `✅ Validation completed for ${checked} Java files`
+          );
+        });
       }
     )
   );
 
   // バリデーション（ファイルオープン・変更・保存・エディタ切替時）
-  let validationTimeout: ReturnType<typeof setTimeout>;
-  const scheduleAll = (doc: vscode.TextDocument) => {
-    if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
-      return;
-    }
-    clearTimeout(validationTimeout);
-    validationTimeout = setTimeout(async () => {
-      outputChannel.appendLine("🔍 Re-validating properties and placeholders…");
-      await validateProperties(doc, propDiagnostics, propertyFileGlobs);
-      await validatePlaceholders(doc, phDiagnostics);
-    }, 500);
-  };
-
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(scheduleAll),
     vscode.workspace.onDidChangeTextDocument((e) => scheduleAll(e.document)),
-    vscode.workspace.onDidSaveTextDocument(scheduleAll),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (doc.languageId === "java") {
+        scheduleAll(doc);
+        return;
+      }
+      if (doc.languageId === "properties" || doc.uri.fsPath.endsWith(".properties")) {
+        propertyCacheDirty = true;
+        void queueValidation(async () => {
+          await revalidateCachedJavaFiles();
+        });
+      }
+    }),
     vscode.window.onDidChangeActiveTextEditor(
       (ed) => ed?.document && scheduleAll(ed.document)
     )
   );
+
+  if (typeof vscode.workspace.onDidCloseTextDocument === "function") {
+    context.subscriptions.push(
+      vscode.workspace.onDidCloseTextDocument((doc) =>
+        clearValidationTimer(doc.uri)
+      )
+    );
+  }
+
+  if (typeof vscode.workspace.onDidChangeConfiguration === "function") {
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        const affectsPropertyGlobs = e.affectsConfiguration(
+          "java-message-key-navigator.propertyFileGlobs"
+        );
+        const affectsExtractionPatterns =
+          e.affectsConfiguration(
+            "java-message-key-navigator.messageKeyExtractionPatterns"
+          ) ||
+          e.affectsConfiguration(
+            "java-message-key-navigator.annotationKeyExtractionPatterns"
+          );
+        if (!affectsPropertyGlobs && !affectsExtractionPatterns) {
+          return;
+        }
+        if (affectsPropertyGlobs) {
+          propertyCacheDirty = true;
+          propertyGlobSignature = "";
+        }
+        void queueValidation(async () => {
+          await validateWorkspaceJavaFiles();
+        });
+      })
+    );
+  }
+
+  if (typeof vscode.workspace.createFileSystemWatcher === "function") {
+    const javaWatcher =
+      vscode.workspace.createFileSystemWatcher(JAVA_INCLUDE_PATTERN);
+    context.subscriptions.push(
+      javaWatcher,
+      javaWatcher.onDidCreate((uri) => {
+        if (isExcludedFile(uri.fsPath)) {
+          return;
+        }
+        void queueValidation(async () => {
+          await validateJavaUri(uri, true);
+        });
+      }),
+      javaWatcher.onDidChange((uri) => {
+        if (isExcludedFile(uri.fsPath)) {
+          return;
+        }
+        void queueValidation(async () => {
+          await validateJavaUri(uri);
+        });
+      }),
+      javaWatcher.onDidDelete((uri) => {
+        const cacheKey = uri.fsPath;
+        javaValidationCache.delete(cacheKey);
+        clearValidationTimer(uri);
+        clearDiagnosticsForUri(uri);
+      })
+    );
+  }
+
+  // 初回インデックス（ワークスペースが開かれている場合）
+  if (
+    Array.isArray(vscode.workspace.workspaceFolders) &&
+    vscode.workspace.workspaceFolders.length > 0
+  ) {
+    void queueValidation(async () => {
+      await validateWorkspaceJavaFiles();
+      outputChannel.appendLine("✅ Java validation cache warmed up.");
+    });
+  }
 
   // アクティブエディタがあれば即時バリデート
   if (vscode.window.activeTextEditor) {
