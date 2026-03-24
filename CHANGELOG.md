@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.14] - 2026-03-25
+
+### Changed (1.0.14)
+
+- Bumped extension version to **1.0.14**.
+- Updated `README.md` to clarify that Go to Definition lands on the
+  exact message key definition in `.properties` files.
+
+### Fixed (1.0.14)
+
+- Fixed Go to Definition so it targets the message-key range itself,
+  instead of placing the cursor at the end of the `.properties` line.
+- Added regression test coverage for key-range based property
+  navigation.
+
 ## [1.0.13] - 2026-03-24
 
 ### Added (1.0.13)

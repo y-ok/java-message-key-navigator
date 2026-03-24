@@ -189,7 +189,10 @@ describe("utils.ts", () => {
       const loc = await findPropertyLocation("b");
       assert.ok(loc);
       assert.strictEqual(loc!.filePath, propFile);
-      assert.strictEqual(loc!.position.line, 1);
+      assert.strictEqual(loc!.range.start.line, 1);
+      assert.strictEqual(loc!.range.start.character, 0);
+      assert.strictEqual(loc!.range.end.line, 1);
+      assert.strictEqual(loc!.range.end.character, 1);
     });
   });
 
@@ -587,13 +590,13 @@ describe("utils.ts", () => {
     });
   });
 
-  // ── 2) findPropertyLocation の line.text.length 分岐 ──
-  describe("findPropertyLocation – position.character に line.text.length を使う", () => {
-    it("行末の文字数を character にセットする", async () => {
+  // ── 2) findPropertyLocation のキー範囲計算 ──
+  describe("findPropertyLocation – key の Range を返す", () => {
+    it("キーの開始位置から終了位置までを range にセットする", async () => {
       // 1) 一時ディレクトリと .properties を用意
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "test-utils-"));
       const file = path.join(tmp, "app.properties");
-      fs.writeFileSync(file, ["foo=123", "bar=XYZ"].join("\n"), "utf-8");
+      fs.writeFileSync(file, ["foo=123", "  bar=XYZ"].join("\n"), "utf-8");
 
       // 2) customPropertyGlobs に自ファイルを指定
       jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
@@ -607,10 +610,10 @@ describe("utils.ts", () => {
       const loc = await findPropertyLocation("bar");
 
       expect(loc).not.toBeNull();
-      // line=1 (0-origin)
-      expect(loc!.position.line).toBe(1);
-      // lines[1] === "bar=XYZ", length === 7
-      expect(loc!.position.character).toBe("bar=XYZ".length);
+      expect(loc!.range.start.line).toBe(1);
+      expect(loc!.range.start.character).toBe(2);
+      expect(loc!.range.end.line).toBe(1);
+      expect(loc!.range.end.character).toBe(5);
     });
   });
 

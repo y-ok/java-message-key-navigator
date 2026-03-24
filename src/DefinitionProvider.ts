@@ -40,12 +40,9 @@ export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
         const loc = await findPropertyLocation(key);
         if (loc) {
           outputChannel.appendLine(
-            `🚀 Jump destination: ${loc.filePath}:${loc.position.line + 1}`
+            `🚀 Jump destination: ${loc.filePath}:${loc.range.start.line + 1}`
           );
-          return new vscode.Location(
-            vscode.Uri.file(loc.filePath),
-            loc.position
-          );
+          return new vscode.Location(vscode.Uri.file(loc.filePath), loc.range);
         } else {
           outputChannel.appendLine(`❌ Definition not found: ${key}`);
           return null;
