@@ -225,7 +225,7 @@ Add these to your **User** or **Workspace** `settings.json`:
      - executes `npm ci`, `npm run lint`, `npm test`, and `npm run build`
      - uploads coverage and generated VSIX as workflow artifacts
    - Release workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
-     - runs only when a version tag such as `v1.0.12` is pushed
+     - runs only when a version tag such as `v1.0.13` is pushed
      - requires the pushed tag to match `package.json` version
      - reruns lint, tests, and `npm run benchmark:strict` before release upload
      - creates the GitHub Release if it does not exist yet, then uploads the generated VSIX
