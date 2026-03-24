@@ -4,7 +4,7 @@
 [![CI](https://github.com/y-ok/java-message-key-navigator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/y-ok/java-message-key-navigator/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/y-ok/java-message-key-navigator/branch/main/graph/badge.svg)](https://codecov.io/gh/y-ok/java-message-key-navigator)
 
-**Java Message Key Navigator** is a VS Code extension designed to supercharge your Java internationalization (I18N) workflow. Hover over any I18N method call to instantly preview the corresponding value from your `.properties` files, and use ⌘/Ctrl + click to jump straight to its definition. When a key is missing, you’ll see an automatic warning plus a one-click quick fix that inserts the new key in the correct sorted order—no more manual file edits or guesswork. With customizable extraction patterns and support for multiple property-file globs, this extension keeps your message keys organized and your development flow uninterrupted.
+**Java Message Key Navigator** is a VS Code extension designed to supercharge your Java internationalization (I18N) workflow. Hover over any I18N method call to instantly preview the corresponding value from your `.properties` files, and use ⌘/Ctrl + click to jump straight to the exact message-key definition. When a key is missing, you’ll see an automatic warning plus a one-click quick fix that inserts the new key in the correct sorted order—no more manual file edits or guesswork. With customizable extraction patterns and support for multiple property-file globs, this extension keeps your message keys organized and your development flow uninterrupted.
 
 ---
 
@@ -22,7 +22,7 @@ infrastructureLogger.log("PLF1001");
 and instantly see the localized message inline.
 
 **Go to Definition**
-Use ⌘ Click (macOS) or Ctrl Click to jump directly to the line in your `.properties` file where the key is defined.
+Use ⌘ Click (macOS) or Ctrl Click to jump directly to the exact message key in your `.properties` file.
 
 **Undefined Key Detection & Quick Fixes**
 When you use a key that doesn’t exist in any of your `.properties` files, a warning will appear automatically. The extension offers a quick fix that:
@@ -124,7 +124,7 @@ Add these to your **User** or **Workspace** `settings.json`:
    Hover over any supported method call to see the message value inline.
 
 2. **Definition**  
-   ⌘ Click / Ctrl Click to jump to the exact line in the `.properties` file.
+   ⌘ Click / Ctrl Click to jump to the exact message key in the `.properties` file.
 
 3. **Quick Fix**  
    When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key in the correct sorted position of your chosen file.
@@ -225,7 +225,7 @@ Add these to your **User** or **Workspace** `settings.json`:
      - executes `npm ci`, `npm run lint`, `npm test`, and `npm run build`
      - uploads coverage and generated VSIX as workflow artifacts
    - Release workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
-     - runs only when a version tag such as `v1.0.13` is pushed
+     - runs only when a version tag such as `v1.0.14` is pushed
      - requires the pushed tag to match `package.json` version
      - reruns lint, tests, and `npm run benchmark:strict` before release upload
      - creates the GitHub Release if it does not exist yet, then uploads the generated VSIX

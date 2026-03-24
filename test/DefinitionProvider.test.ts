@@ -36,8 +36,11 @@ jest.mock("vscode", () => ({
   Location: class {
     constructor(public uri: any, public range: any) {
       this.uri = uri;
-      this.range = { start: range, end: range };
+      this.range = range;
     }
+  },
+  Range: class {
+    constructor(public start: any, public end: any) {}
   },
 }));
 
@@ -71,7 +74,10 @@ describe("PropertiesDefinitionProvider", () => {
 
     (utils.findPropertyLocation as jest.Mock).mockResolvedValue({
       filePath: "/foo/bar.properties",
-      position: new vscode.Position(3, 5),
+      range: new vscode.Range(
+        new vscode.Position(3, 5),
+        new vscode.Position(3, 12)
+      ),
     });
 
     const res = await provider.provideDefinition(doc as any, position);
@@ -85,6 +91,8 @@ describe("PropertiesDefinitionProvider", () => {
     expect(res.uri.fsPath).toBe("/foo/bar.properties");
     expect(res.range.start.line).toBe(3);
     expect(res.range.start.character).toBe(5);
+    expect(res.range.end.line).toBe(3);
+    expect(res.range.end.character).toBe(12);
   });
 
   it("異常系: ジャンプ先が見つからない場合、nullが返る", async () => {

@@ -111,7 +111,7 @@ export function getCustomPatterns(): RegExp[] {
  */
 export async function findPropertyLocation(
   key: string
-): Promise<{ filePath: string; position: vscode.Position } | null> {
+): Promise<{ filePath: string; range: vscode.Range } | null> {
   const config = vscode.workspace.getConfiguration(
     "java-message-key-navigator"
   );
@@ -124,9 +124,13 @@ export async function findPropertyLocation(
       const lines = fs.readFileSync(fp, "utf-8").split(/\r?\n/);
       const idx = lines.findIndex((l) => l.trim().startsWith(`${key}=`));
       if (idx !== -1) {
+        const keyStart = lines[idx].indexOf(key);
         return {
           filePath: fp,
-          position: new vscode.Position(idx, lines[idx].length),
+          range: new vscode.Range(
+            new vscode.Position(idx, keyStart),
+            new vscode.Position(idx, keyStart + key.length)
+          ),
         };
       }
     }
