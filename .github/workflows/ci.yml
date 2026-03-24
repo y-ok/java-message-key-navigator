@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -47,7 +47,7 @@ jobs:
 
       - name: Upload Coverage Artifact
         if: ${{ hashFiles('coverage/lcov.info') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: coverage
@@ -55,7 +55,7 @@ jobs:
 
       - name: Upload VSIX Artifact
         if: ${{ hashFiles('java-message-key-navigator-*.vsix') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: vsix-package
           path: java-message-key-navigator-*.vsix
