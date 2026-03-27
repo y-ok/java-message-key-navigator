@@ -69,6 +69,15 @@ Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` 
   ```
 
 - 🔍 Treats common exception arguments (e.g. `e`, `ex`, `exceptionObj`) as non-placeholder arguments in logger-style calls
+- 🔍 Recognizes argument-builder methods configured via `argBuilderPatterns` (see [Configuration](#%EF%B8%8F-configuration))
+
+  ```java
+  // With argBuilderPatterns: [{ "pattern": "buildArgs", "argCount": 1 }]
+  // message.properties: PLF1032=Request URI: {0}
+  // → 1 placeholder matches argCount 1 ✅
+  infrastructureLogger.log("PLF1032", buildArgs(requestUri));
+  ```
+
 - ❌ Highlights any mismatch with a red squiggly underline in the editor for immediate correction
 
 **Annotation Key Extraction**  
@@ -107,14 +116,51 @@ Add these to your **User** or **Workspace** `settings.json`:
     "@LogStartEnd\\(.*?end\\s*=\\s*\"([^\\\"]+)\"",
     "@LogStartEnd\\(.*?exception\\s*=\\s*\"([^\\\"]+)\"",
   ],
+
+  // Methods that build argument arrays with a known argument count
+  "java-message-key-navigator.argBuilderPatterns": [
+    { "pattern": "buildArgs", "argCount": 1 },
+    { "pattern": "createLogParams", "argCount": 2 },
+  ],
 }
 ```
 
-| Setting                                   | Description                                                                                                    |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `messageKeyExtractionPatterns` (array)    | Method identifier strings used to detect target calls (e.g. `infrastructureLogger.log`)                        |
-| `annotationKeyExtractionPatterns` (array) | Regex patterns for annotations to scan for keys (e.g. values of `start`, `end`, `exception` in `@LogStartEnd`) |
-| `propertyFileGlobs` (array)               | Glob patterns for your `.properties` files to include in look-up and auto-insertion                            |
+| Setting                                   | Description                                                                                                                                                |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `messageKeyExtractionPatterns` (array)    | Method identifier strings used to detect target calls (e.g. `infrastructureLogger.log`)                                                                    |
+| `annotationKeyExtractionPatterns` (array) | Regex patterns for annotations to scan for keys (e.g. values of `start`, `end`, `exception` in `@LogStartEnd`)                                             |
+| `propertyFileGlobs` (array)               | Glob patterns for your `.properties` files to include in look-up and auto-insertion                                                                        |
+| `argBuilderPatterns` (array of objects)   | Methods that build argument arrays with a known count. Each entry has `pattern` (method name) and `argCount` (number of arguments it produces). See below. |
+
+### argBuilderPatterns
+
+When placeholder validation encounters a method call as the argument expression instead of an inline array literal (`new Object[] {…}`), it cannot determine the argument count statically. The `argBuilderPatterns` setting lets you tell the extension how many arguments a given helper method produces.
+
+```jsonc
+"java-message-key-navigator.argBuilderPatterns": [
+  { "pattern": "buildArgs", "argCount": 1 },
+  { "pattern": "createLogParams", "argCount": 2 }
+]
+```
+
+**How it works:**
+
+- `pattern` — The method name to match. Matches bare calls (`buildArgs(…)`), qualified calls (`Utils.buildArgs(…)`), and `this.buildArgs(…)`.
+- `argCount` — The number of placeholder arguments the method produces. Used in place of static counting for placeholder validation.
+
+**Example:**
+
+```java
+// message.properties: PLF1032=Request URI: {0}
+
+// Without argBuilderPatterns → extension cannot validate argument count
+infrastructureLogger.log("PLF1032", buildArgs(requestUri));
+
+// With { "pattern": "buildArgs", "argCount": 1 } → validates that
+// 1 placeholder ({0}) matches argCount 1 ✅
+```
+
+When no pattern matches, the extension falls back to its default behavior (treating the expression as a single argument).
 
 ---
 
