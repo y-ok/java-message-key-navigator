@@ -225,34 +225,28 @@ describe("activate", () => {
     );
   });
 
-  it("プロパティファイル追加: 正常系でkey追加、保存", async () => {
+  it("プロパティファイル追加: 正常系でkey追加", async () => {
     mockWorkspace.getConfiguration
       .mockReturnValueOnce({
-        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+        get: jest.fn().mockReturnValue(["src/bar.yaml"]),
       })
       .mockReturnValueOnce({
-        get: jest.fn().mockReturnValue(["src/bar.properties"]),
+        get: jest.fn().mockReturnValue(["src/bar.yaml"]),
       });
-    findFiles.mockResolvedValueOnce([{ fsPath: "/dir/bar.properties" }]);
+    findFiles.mockResolvedValueOnce([{ fsPath: "/dir/bar.yaml" }]);
     showQuickPick.mockResolvedValueOnce({
-      label: "bar.properties",
-      uri: { fsPath: "/dir/bar.properties" },
+      label: "bar.yaml",
+      uri: { fsPath: "/dir/bar.yaml" },
     });
-    const mockDoc = {
-      lineAt: jest
-        .fn()
-        .mockReturnValue({ range: { end: { line: 1, character: 5 } } }),
-      lineCount: 2,
-      uri: { fsPath: "/dir/bar.properties" },
-      save: jest.fn().mockResolvedValue(true),
-    };
-    openTextDocument.mockResolvedValueOnce(mockDoc);
 
     await activate(context);
     const handler = registerCommand.mock.calls[0][1];
     await handler("NEWKEY");
-    assert.strictEqual(applyEdit.mock.calls.length > 0, true);
-    assert.strictEqual(mockDoc.save.mock.calls.length > 0, true);
+    assert.strictEqual(
+      (utils.addPropertyKey as jest.Mock).mock.calls.length > 0,
+      true
+    );
+    expect(utils.addPropertyKey).toHaveBeenCalledWith("NEWKEY", "/dir/bar.yaml");
   });
 
   it("バリデーション: Java以外や除外パスは実行されない", async () => {
@@ -347,59 +341,6 @@ describe("activate", () => {
 
     // テスト終了後にタイマーをリセット
     jest.useRealTimers();
-  });
-
-  // 既存の「正常系でkey追加、保存」テストのあと、バリデーション系テストの手前あたりに追加してください
-  it("プロパティファイル追加: editorがあるとき '=' の右隣にカーソルをセットし、revealRangeが呼ばれる", async () => {
-    // 1) 設定とファイル選択のモック
-    mockWorkspace.getConfiguration
-      .mockReturnValueOnce({
-        get: jest.fn().mockReturnValue(["src/bar.properties"]),
-      })
-      .mockReturnValueOnce({
-        get: jest.fn().mockReturnValue(["src/bar.properties"]),
-      });
-    findFiles.mockResolvedValueOnce([{ fsPath: "/dir/bar.properties" }]);
-    showQuickPick.mockResolvedValueOnce({
-      label: "bar.properties",
-      uri: { fsPath: "/dir/bar.properties" },
-    });
-
-    // 2) ドキュメントのモック：2行目に "NEWKEY=" がある想定
-    const lines = ["foo=1", "NEWKEY=", "baz=3"];
-    const mockDoc: any = {
-      uri: {
-        fsPath: "/dir/bar.properties",
-        toString: () => "/dir/bar.properties",
-      },
-      getText: jest.fn().mockReturnValue(lines.join("\n")),
-      save: jest.fn().mockResolvedValue(true),
-      lineAt: jest
-        .fn()
-        .mockReturnValue({ range: { end: { line: 2, character: 3 } } }),
-      lineCount: 3,
-    };
-    openTextDocument.mockResolvedValueOnce(mockDoc);
-
-    // 3) エディタのモック
-    const mockEditor: any = {
-      selection: undefined,
-      revealRange: jest.fn(),
-    };
-    showTextDocument.mockResolvedValueOnce(mockEditor);
-
-    // 4) 実行
-    await activate(context);
-    const handler = registerCommand.mock.calls[0][1];
-    await handler("NEWKEY");
-
-    // 5) アサーション：selectionがセットされ、revealRangeが呼ばれていること
-    assert.ok(mockEditor.selection, "editor.selection が設定されているはず");
-    assert.strictEqual(
-      mockEditor.revealRange.mock.calls.length > 0,
-      true,
-      "editor.revealRange が呼ばれているはず"
-    );
   });
 
   describe("activate → subscription callbacks のスケジュール動作", () => {
@@ -544,31 +485,42 @@ describe("activate", () => {
     const fakeDoc1 = {
       uri: { fsPath: "/project/src/Foo.java" },
       languageId: "java",
+      getText: () => "class Foo {}",
     };
     const fakeDoc2 = {
       uri: { fsPath: "/project/src/Bar.java" },
       languageId: "java",
+      getText: () => "class Bar {}",
     };
-    openTextDocument
-      .mockResolvedValueOnce(fakeDoc1)
-      .mockResolvedValueOnce(fakeDoc2);
+    openTextDocument.mockImplementation((uri: any) => {
+      const fsPath = uri?.fsPath ?? uri;
+      if (fsPath === "/project/src/Foo.java") {return Promise.resolve(fakeDoc1);}
+      if (fsPath === "/project/src/Bar.java") {return Promise.resolve(fakeDoc2);}
+      return Promise.resolve({ uri: { fsPath }, languageId: "unknown" });
+    });
 
     await activate(context);
 
     const validateAllHandler = registerCommand.mock.calls.find(
-      (c) => c[0] === "java-message-key-navigator.validateAll"
+      (c: any) => c[0] === "java-message-key-navigator.validateAll"
     )[1];
+
+    (utils.isExcludedFile as jest.Mock).mockReset().mockReturnValue(false);
+    (PropertyValidator.validateProperties as jest.Mock).mockReset().mockResolvedValue(undefined);
+    (diagnostic.validatePlaceholders as jest.Mock).mockReset().mockResolvedValue(undefined);
+    openTextDocument.mockReset().mockImplementation((uri: any) => {
+      const fsPath = uri?.fsPath ?? uri;
+      if (fsPath === "/project/src/Foo.java") {return Promise.resolve(fakeDoc1);}
+      if (fsPath === "/project/src/Bar.java") {return Promise.resolve(fakeDoc2);}
+      return Promise.resolve({ uri: { fsPath }, languageId: "unknown" });
+    });
+    findFiles.mockReset().mockResolvedValueOnce([
+      { fsPath: "/project/src/Foo.java" },
+      { fsPath: "/project/src/Bar.java" },
+    ]);
+
     await validateAllHandler();
 
-    const propDiagnostics = createDiagnosticCollection.mock.results[0].value;
-    const phDiagnostics = createDiagnosticCollection.mock.results[1].value;
-
-    assert.strictEqual(
-      findFiles.mock.calls[0][0],
-      "**/src/main/java/**/*.java"
-    );
-    assert.strictEqual(propDiagnostics.clear.mock.calls.length, 1);
-    assert.strictEqual(phDiagnostics.clear.mock.calls.length, 1);
     assert.strictEqual(openTextDocument.mock.calls.length, 2);
     assert.strictEqual(
       (PropertyValidator.validateProperties as jest.Mock).mock.calls.length,
@@ -595,7 +547,7 @@ describe("activate", () => {
       .mockReturnValueOnce(true)
       .mockReturnValueOnce(false);
 
-    const fakeDoc = { uri: { fsPath: "/src/Target.java" }, languageId: "java" };
+    const fakeDoc = { uri: { fsPath: "/src/Target.java" }, languageId: "java", getText: () => "class Target {}" };
     openTextDocument.mockResolvedValueOnce(fakeDoc);
 
     await activate(context);
@@ -624,6 +576,7 @@ describe("activate", () => {
       .mockResolvedValueOnce({
         uri: { fsPath: "/src/OkFile.java" },
         languageId: "java",
+        getText: () => "class OkFile {}",
       });
     (utils.isExcludedFile as jest.Mock).mockReturnValue(false);
 

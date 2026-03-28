@@ -163,8 +163,9 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     return;
   }
 
-  // 3) ファイルを読み込んで行を取得
+  // 3) ファイルを読み込んで行を取得（元の改行コードを保持）
   const raw = fs.readFileSync(targetPath, "utf-8");
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
   const allLines = raw.split(/\r?\n/);
   const label = path.basename(targetPath);
 
@@ -204,13 +205,13 @@ export async function addPropertyKey(key: string, fileToUse: string) {
 
   // 6) 配列に挿入 & 保存
   allLines.splice(insertIdx, 0, `${key}=`);
-  fs.writeFileSync(targetPath, allLines.join(os.EOL), "utf-8");
+  fs.writeFileSync(targetPath, allLines.join(eol), "utf-8");
   vscode.window.showInformationMessage(
     `✅ Added "${key}" to ${label}! (line ${insertIdx + 1})`
   );
 
-  // 7) キャッシュ更新
-  await loadPropertyDefinitions([targetPath]);
+  // 7) キャッシュ更新（追加したキーだけ反映し、他ファイルのキャッシュを維持）
+  propertyCache[key] = "";
 
   // 8) プロパティファイルを１画面で開く
   const propDoc = await vscode.workspace.openTextDocument(targetPath);
