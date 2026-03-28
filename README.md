@@ -69,7 +69,7 @@ Detects when the number of `{0}`, `{1}`, … placeholders in your `.properties` 
   ```
 
 - 🔍 Treats common exception arguments (e.g. `e`, `ex`, `exceptionObj`) as non-placeholder arguments in logger-style calls
-- 🔍 Recognizes argument-builder methods configured via `argBuilderPatterns` (see [Configuration](#%EF%B8%8F-configuration))
+- 🔍 Recognizes argument-builder methods configured via `argBuilderPatterns` (see [Configuration](#️-configuration))
 
   ```java
   // With argBuilderPatterns: [{ "pattern": "buildArgs", "argCount": 1 }]
