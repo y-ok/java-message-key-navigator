@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.15] - 2026-03-28
+
+### Added (1.0.15)
+
+- New `argBuilderPatterns` setting for placeholder validation. When
+  argument arrays are built by helper methods (e.g. `buildArgs(requestUri)`)
+  instead of inline `new Object[] {…}`, the extension can now use a
+  configured argument count for validation.
+- Each entry defines a `pattern` (method name) and `argCount` (number of
+  arguments it produces). Matches bare calls, qualified calls
+  (`Utils.buildArgs(…)`), and `this.buildArgs(…)`.
+
+### Changed (1.0.15)
+
+- Bumped extension version to **1.0.15**.
+- Updated `README.md` with `argBuilderPatterns` feature description,
+  configuration example, and detailed usage guide.
+
+---
+
 ## [1.0.14] - 2026-03-25
 
 ### Changed (1.0.14)
