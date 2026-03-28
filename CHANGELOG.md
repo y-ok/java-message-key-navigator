@@ -11,25 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed (1.0.16)
 
-- **addPropertyKey がキャッシュを全破壊する**: `loadPropertyDefinitions([targetPath])` で
-  キャッシュが対象ファイル1つだけに上書きされていた。`propertyCache[key] = ""` に変更し、
-  追加キーだけをキャッシュに追記するようにした。
-- **addPropertyKey が改行コードを破壊する**: `os.EOL` で書き込んでいたため、元ファイルの
-  改行コード（CRLF/LF）が強制変換されていた。ファイル読み込み時に元の改行コードを検出し
-  保持するようにした。
-- **PropertiesQuickFixProvider が最初の1ファイルしか候補にしない**: `findFiles(g, undefined, 1)`
-  で最大1件に制限し `break` していた。全 glob を走査して全マッチファイルの存在を確認し、
-  マッチ0件時は空配列を返すようにした。ファイル選択は従来通り showQuickPick ダイアログで行う。
-- **argBuilderPatterns 設定変更が再検証をトリガーしない**: `onDidChangeConfiguration` の
-  検知対象に `argBuilderPatterns` を追加した。
-- **プロパティファイルの外部変更を検知できない**: `propertyFileGlobs` の各 glob に対して
-  FileSystemWatcher を登録し、外部変更時にキャッシュ再構築と Java 再検証を行うようにした。
-  設定変更時に Watcher を再作成する処理も追加。
+- Fixed `addPropertyKey` destroying the entire property cache by replacing
+  `loadPropertyDefinitions([targetPath])` (which overwrote the cache with a
+  single file) with `propertyCache[key] = ""` to append only the new key.
+- Fixed `addPropertyKey` corrupting line endings by replacing `os.EOL` with
+  automatic detection of the original line ending style (CRLF or LF).
+- Fixed `PropertiesQuickFixProvider` only checking the first glob match.
+  Now searches all configured globs with deduplication and returns an empty
+  array when no files are found instead of falling back to a raw glob string.
+  File selection remains via the `showQuickPick` dialog.
+- Fixed `argBuilderPatterns` configuration changes not triggering
+  revalidation by adding it to the `onDidChangeConfiguration` handler.
+- Fixed property file external changes (e.g. git pull) not being detected
+  by adding `FileSystemWatcher` instances for each `propertyFileGlobs` entry.
+  Watchers are recreated when the glob configuration changes.
 
 ### Changed (1.0.16)
 
 - Bumped extension version to **1.0.16**.
-- テストの `mockClear()` を `mockReset()` に変更し、テスト間の状態汚染を解消。
+- Replaced `mockClear()` with `mockReset()` in tests to prevent state
+  pollution between test cases.
 
 ---
 
