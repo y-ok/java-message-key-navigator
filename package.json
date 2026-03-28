@@ -36,6 +36,26 @@
           "type": "array",
           "description": "Regex patterns to extract I18N keys from annotations.",
           "default": []
+        },
+        "java-message-key-navigator.argBuilderPatterns": {
+          "type": "array",
+          "description": "Defines methods that build argument arrays with a known argument count. When a method call matching a pattern is used as the argument expression, the configured argCount is used for placeholder validation.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Method name to match (e.g. \"buildArgs\"). Matches bare calls and qualified calls like Utils.buildArgs(...)."
+              },
+              "argCount": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The number of arguments the method produces."
+              }
+            },
+            "required": ["pattern", "argCount"]
+          },
+          "default": []
         }
       }
     },

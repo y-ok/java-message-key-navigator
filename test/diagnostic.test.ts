@@ -41,10 +41,12 @@ describe("validatePlaceholders", () => {
   let text: string;
   let offset: number;
   let patterns: string[];
+  let argBuilderPatterns: Array<{ pattern: string; argCount: number }>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     seen = [];
+    argBuilderPatterns = [];
 
     doc = {
       languageId: "java",
@@ -63,7 +65,11 @@ describe("validatePlaceholders", () => {
     } as any;
 
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (_key: string, _def: any) => patterns,
+      get: (key: string, def: any) => {
+        if (key === "messageKeyExtractionPatterns") return patterns;
+        if (key === "argBuilderPatterns") return argBuilderPatterns;
+        return def;
+      },
     });
   });
 
@@ -674,5 +680,231 @@ describe("validatePlaceholders", () => {
     expect(messages.some((m) => /プレースホルダー.*\{2\}.*\{5\}/.test(m))).toBe(
       true
     );
+  });
+
+  // ===== argBuilderPatterns テスト =====
+
+  it("argBuilderPattern にマッチするメソッド呼び出しは設定された argCount で検証されること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", buildArgs(requestUri))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("argBuilderPattern にマッチするが argCount がプレースホルダー数と不一致の場合はエラーになること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", buildArgs(requestUri))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("argBuilderPattern が修飾付き呼び出し（Utils.buildArgs）にマッチすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 2 }];
+    text = `log("MSG", Utils.buildArgs(a, b))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("argBuilderPattern に未登録のメソッド呼び出しは既存ロジック（argCount=1）にフォールスルーすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", someOtherMethod(x))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("argBuilderPatterns が空の場合は既存動作が維持されること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [];
+    text = `log("MSG", buildArgs(x))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    // buildArgs(x) は単一引数扱い → actualArgCount=1, expectedArgCount=1 → 一致
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("複数の argBuilderPatterns から正しいパターンがマッチすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [
+      { pattern: "buildArgs", argCount: 1 },
+      { pattern: "createLogParams", argCount: 2 },
+    ];
+    text = `log("MSG", createLogParams(a, b))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("this.buildArgs() のような this 修飾付き呼び出しにマッチすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", this.buildArgs(requestUri))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("深いパッケージ修飾（a.b.c.buildArgs）にマッチすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 3 }];
+    text = `log("MSG", com.example.Utils.buildArgs(a, b, c))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("パターン 'build' が 'buildArgs' に部分一致しないこと", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "build", argCount: 2 }];
+    text = `log("MSG", buildArgs(x))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    // "build" は "buildArgs" にマッチしない → フォールスルー → actualArgCount=1
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("argCount: 0 の場合はプレースホルダーなしのメッセージと一致すること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "emptyArgs", argCount: 0 }];
+    text = `log("MSG", emptyArgs())`;
+    getMessageValueForKey.mockResolvedValue("Hello");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("argCount: 0 でプレースホルダーがある場合はエラーになること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "emptyArgs", argCount: 0 }];
+    text = `log("MSG", emptyArgs())`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("argBuilderPattern + 例外引数（ex）が末尾にある場合は ex が除外されること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", buildArgs(requestUri), ex)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    // args = ["buildArgs(requestUri)", "ex"]
+    // args.length > 1 なので argBuilderPattern 分岐には入らない
+    // 末尾 ex が除外ロジックで処理され、残り1個で一致
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("argBuilderPattern + locale 引数が末尾にある場合は locale が除外されること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", buildArgs(requestUri), Locale.JAPAN)`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    // locale が除外 → args = ["buildArgs(requestUri)"]
+    // args.length === 1 → argBuilderPattern マッチ → argCount=1 → 一致
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("メソッド名の前にスペースがある場合（buildArgs (x)）にもマッチすること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
+    text = `log("MSG", buildArgs (requestUri))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("同一ファイルに複数の argBuilderPattern 対象呼び出しがある場合、それぞれ検証されること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [
+      { pattern: "buildArgs", argCount: 1 },
+      { pattern: "createParams", argCount: 2 },
+    ];
+    text = `log("MSG1", buildArgs(a)); log("MSG2", createParams(a, b))`;
+    getMessageValueForKey
+      .mockResolvedValueOnce("Hi {0}")       // MSG1: 1個 → buildArgs argCount=1 → OK
+      .mockResolvedValueOnce("Hi {0} {1}");  // MSG2: 2個 → createParams argCount=2 → OK
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("同一ファイルで一方が一致・他方が不一致の場合、不一致のみエラーになること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [
+      { pattern: "buildArgs", argCount: 1 },
+      { pattern: "createParams", argCount: 2 },
+    ];
+    text = `log("MSG1", buildArgs(a)); log("MSG2", createParams(a, b))`;
+    getMessageValueForKey
+      .mockResolvedValueOnce("Hi {0}")           // MSG1: OK
+      .mockResolvedValueOnce("Hi {0} {1} {2}");  // MSG2: 3個 vs argCount=2 → NG
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count \(3\).*argument count \(2\)/);
+  });
+
+  it("配列リテラルが優先され、argBuilderPattern は適用されないこと", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 3 }];
+    // new Object[] { ... } は配列リテラルとして先に処理される
+    text = `log("MSG", new Object[] { "A", "B" })`;
+    getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
+
+    await validatePlaceholders(doc, collection);
+    // 配列リテラルとして要素2個 → プレースホルダー2個 → 一致
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("パターン名に正規表現の特殊文字が含まれていても正しくエスケープされること", async () => {
+    patterns = ["log"];
+    argBuilderPatterns = [{ pattern: "build$Args", argCount: 1 }];
+    text = `log("MSG", build$Args(x))`;
+    getMessageValueForKey.mockResolvedValue("Hi {0}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
   });
 });

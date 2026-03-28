@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { getMessageValueForKey } from "./utils";
 
+interface ArgBuilderPattern {
+  pattern: string;
+  argCount: number;
+}
+
 export async function validatePlaceholders(
   document: vscode.TextDocument,
   collection: vscode.DiagnosticCollection
@@ -10,9 +15,12 @@ export async function validatePlaceholders(
   const seenDiagnostics = new Set<string>();
   const text = document.getText();
 
-  const patterns = vscode.workspace
-    .getConfiguration("java-message-key-navigator")
-    .get<string[]>("messageKeyExtractionPatterns", []);
+  const config = vscode.workspace.getConfiguration("java-message-key-navigator");
+  const patterns = config.get<string[]>("messageKeyExtractionPatterns", []);
+  const argBuilderPatterns = config.get<ArgBuilderPattern[]>(
+    "argBuilderPatterns",
+    []
+  );
   const regexes = patterns
     .map(normalizeMethodPattern)
     .filter((pat) => pat.length > 0)
@@ -149,7 +157,15 @@ export async function validatePlaceholders(
         } else if (/\.join\s*\(/.test(args[0])) {
           actualArgCount = expectedArgCount;
         } else {
-          actualArgCount = 1;
+          const builderArgCount = matchArgBuilderPattern(
+            args[0],
+            argBuilderPatterns
+          );
+          if (builderArgCount !== null) {
+            actualArgCount = builderArgCount;
+          } else {
+            actualArgCount = 1;
+          }
         }
       } else {
         actualArgCount = args.filter((e) => e.trim() !== "").length;
@@ -315,4 +331,24 @@ function safeSplit(argString: string): string[] {
 
   if (buffer.trim() !== "") {result.push(buffer.trim());}
   return result;
+}
+
+/**
+ * 引数式が argBuilderPatterns に定義されたメソッド呼び出しにマッチするか判定し、
+ * マッチした場合は設定された argCount を返す。マッチしなければ null。
+ */
+function matchArgBuilderPattern(
+  argText: string,
+  patterns: ArgBuilderPattern[]
+): number | null {
+  const trimmed = argText.trim();
+  for (const { pattern, argCount } of patterns) {
+    const esc = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // buildArgs(...), Utils.buildArgs(...), this.buildArgs(...) にマッチ
+    const re = new RegExp(`(?:^|\\.)${esc}\\s*\\(`);
+    if (re.test(trimmed)) {
+      return argCount;
+    }
+  }
+  return null;
 }
