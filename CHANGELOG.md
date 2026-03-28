@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.16] - 2026-03-28
+
+### Fixed (1.0.16)
+
+- **addPropertyKey がキャッシュを全破壊する**: `loadPropertyDefinitions([targetPath])` で
+  キャッシュが対象ファイル1つだけに上書きされていた。`propertyCache[key] = ""` に変更し、
+  追加キーだけをキャッシュに追記するようにした。
+- **addPropertyKey が改行コードを破壊する**: `os.EOL` で書き込んでいたため、元ファイルの
+  改行コード（CRLF/LF）が強制変換されていた。ファイル読み込み時に元の改行コードを検出し
+  保持するようにした。
+- **PropertiesQuickFixProvider が最初の1ファイルしか候補にしない**: `findFiles(g, undefined, 1)`
+  で最大1件に制限し `break` していた。全 glob を走査して全マッチファイルを収集し、
+  ファイルごとに CodeAction を生成するようにした。マッチ0件時は空配列を返す。
+- **addPropertyKey コマンドがプログラム呼び出しに対応していない**: 第2引数 `filePath` を
+  追加し、QuickFix からファイルパスを直接指定できるようにした。
+- **argBuilderPatterns 設定変更が再検証をトリガーしない**: `onDidChangeConfiguration` の
+  検知対象に `argBuilderPatterns` を追加した。
+- **プロパティファイルの外部変更を検知できない**: `propertyFileGlobs` の各 glob に対して
+  FileSystemWatcher を登録し、外部変更時にキャッシュ再構築と Java 再検証を行うようにした。
+  設定変更時に Watcher を再作成する処理も追加。
+
+### Changed (1.0.16)
+
+- Bumped extension version to **1.0.16**.
+- テストの `mockClear()` を `mockReset()` に変更し、テスト間の状態汚染を解消。
+
+---
+
 ## [1.0.15] - 2026-03-28
 
 ### Added (1.0.15)

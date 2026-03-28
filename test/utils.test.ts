@@ -812,4 +812,142 @@ describe("utils.ts", () => {
       assert.strictEqual(getPropertyValue("fbkey"), "fbval");
     });
   });
+
+  describe("addPropertyKey 後に他ファイルのキャッシュが残る", () => {
+    let tmpDir: string;
+    let file1: string;
+    let file2: string;
+
+    beforeEach(async () => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-bug3-"));
+      file1 = path.join(tmpDir, "messages.properties");
+      file2 = path.join(tmpDir, "errors.properties");
+      fs.writeFileSync(file1, "MSG001=Hello\nMSG002=World");
+      fs.writeFileSync(file2, "ERR001=NotFound\nERR002=Forbidden");
+
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([
+        vscode.Uri.file(file1),
+        vscode.Uri.file(file2),
+      ]);
+      await loadPropertyDefinitions(["**/*.properties"]);
+    });
+
+    it("addPropertyKey 後も他ファイルのキーがキャッシュに残っている", async () => {
+      assert.strictEqual(getPropertyValue("MSG001"), "Hello");
+      assert.strictEqual(getPropertyValue("ERR001"), "NotFound");
+      assert.strictEqual(getPropertyValue("ERR002"), "Forbidden");
+
+      jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+        get: () => [path.join(tmpDir, "*.properties")],
+      } as any);
+      (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([
+        vscode.Uri.file(file1),
+      ]);
+      (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue({
+        lineAt: () => ({ text: "MSG003=" }),
+        getText: () => fs.readFileSync(file1, "utf8"),
+        uri: { fsPath: file1 },
+        save: jest.fn(),
+      } as any);
+      (vscode.window.showTextDocument as jest.Mock).mockResolvedValue({
+        selection: undefined,
+        revealRange: jest.fn(),
+      } as any);
+
+      await addPropertyKey("MSG003", file1);
+
+      const allKeys = getAllPropertyKeys();
+      assert.ok(
+        allKeys.includes("ERR001"),
+        `ERR001 がキャッシュから消失した。残存キー: ${JSON.stringify(allKeys)}`
+      );
+      assert.ok(
+        allKeys.includes("ERR002"),
+        `ERR002 がキャッシュから消失した。残存キー: ${JSON.stringify(allKeys)}`
+      );
+      assert.ok(
+        allKeys.includes("MSG003"),
+        `MSG003 が追加されていない。残存キー: ${JSON.stringify(allKeys)}`
+      );
+    });
+  });
+
+  describe("addPropertyKey が元の改行コードを保持する", () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-bug4-"));
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+    });
+
+    it("CRLF ファイルへの挿入後も CRLF が維持される", async () => {
+      const propFile = path.join(tmpDir, "crlf.properties");
+      fs.writeFileSync(propFile, "aaa=1\r\nccc=3\r\n");
+
+      jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+        get: () => [propFile],
+      } as any);
+      (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([
+        vscode.Uri.file(propFile),
+      ]);
+      (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue({
+        lineAt: () => ({ text: "bbb=" }),
+        getText: () => fs.readFileSync(propFile, "utf8"),
+        uri: { fsPath: propFile },
+        save: jest.fn(),
+      } as any);
+      (vscode.window.showTextDocument as jest.Mock).mockResolvedValue({
+        selection: undefined,
+        revealRange: jest.fn(),
+      } as any);
+
+      await addPropertyKey("bbb", propFile);
+
+      const raw = fs.readFileSync(propFile, "utf8");
+      const hasCRLF = raw.includes("\r\n");
+      const hasBareLF = raw.replace(/\r\n/g, "").includes("\n");
+
+      assert.ok(
+        hasCRLF,
+        `CRLF が LF に変換されてしまった。内容: ${JSON.stringify(raw)}`
+      );
+      assert.ok(
+        !hasBareLF,
+        `CRLF と LF が混在している。内容: ${JSON.stringify(raw)}`
+      );
+    });
+
+    it("LF ファイルへの挿入後も LF が維持される", async () => {
+      const propFile = path.join(tmpDir, "lf.properties");
+      fs.writeFileSync(propFile, "aaa=1\nccc=3\n");
+
+      jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+        get: () => [propFile],
+      } as any);
+      (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([
+        vscode.Uri.file(propFile),
+      ]);
+      (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue({
+        lineAt: () => ({ text: "bbb=" }),
+        getText: () => fs.readFileSync(propFile, "utf8"),
+        uri: { fsPath: propFile },
+        save: jest.fn(),
+      } as any);
+      (vscode.window.showTextDocument as jest.Mock).mockResolvedValue({
+        selection: undefined,
+        revealRange: jest.fn(),
+      } as any);
+
+      await addPropertyKey("bbb", propFile);
+
+      const raw = fs.readFileSync(propFile, "utf8");
+      const hasCRLF = raw.includes("\r\n");
+
+      assert.ok(
+        !hasCRLF,
+        `LF が CRLF に変換されてしまった。内容: ${JSON.stringify(raw)}`
+      );
+    });
+  });
 });
