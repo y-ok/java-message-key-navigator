@@ -16,15 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   single file) with `propertyCache[key] = ""` to append only the new key.
 - Fixed `addPropertyKey` corrupting line endings by replacing `os.EOL` with
   automatic detection of the original line ending style (CRLF or LF).
-- Fixed `PropertiesQuickFixProvider` only checking the first glob match.
-  Now searches all configured globs with deduplication and returns an empty
-  array when no files are found instead of falling back to a raw glob string.
-  File selection remains via the `showQuickPick` dialog.
 - Fixed `argBuilderPatterns` configuration changes not triggering
   revalidation by adding it to the `onDidChangeConfiguration` handler.
 - Fixed property file external changes (e.g. git pull) not being detected
   by adding `FileSystemWatcher` instances for each `propertyFileGlobs` entry.
   Watchers are recreated when the glob configuration changes.
+
+### Refactored (1.0.16)
+
+- Removed unused `findFiles` / `getConfiguration` calls and broken
+  `globs[0]` fallback from `PropertiesQuickFixProvider`. The command
+  handler already performs its own file search via `showQuickPick`, so
+  the provider now passes only `[key]` as the command argument.
 
 ### Changed (1.0.16)
 
