@@ -18,10 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   改行コード（CRLF/LF）が強制変換されていた。ファイル読み込み時に元の改行コードを検出し
   保持するようにした。
 - **PropertiesQuickFixProvider が最初の1ファイルしか候補にしない**: `findFiles(g, undefined, 1)`
-  で最大1件に制限し `break` していた。全 glob を走査して全マッチファイルを収集し、
-  ファイルごとに CodeAction を生成するようにした。マッチ0件時は空配列を返す。
-- **addPropertyKey コマンドがプログラム呼び出しに対応していない**: 第2引数 `filePath` を
-  追加し、QuickFix からファイルパスを直接指定できるようにした。
+  で最大1件に制限し `break` していた。全 glob を走査して全マッチファイルの存在を確認し、
+  マッチ0件時は空配列を返すようにした。ファイル選択は従来通り showQuickPick ダイアログで行う。
 - **argBuilderPatterns 設定変更が再検証をトリガーしない**: `onDidChangeConfiguration` の
   検知対象に `argBuilderPatterns` を追加した。
 - **プロパティファイルの外部変更を検知できない**: `propertyFileGlobs` の各 glob に対して

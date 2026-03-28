@@ -921,41 +921,6 @@ describe("activate cache/index behavior (additional cases)", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("addPropertyKey コマンドに filePath 引数を渡すと showQuickPick をスキップする", async () => {
-    getConfiguration.mockReturnValue({
-      get: jest.fn((key: string) =>
-        key === "propertyFileGlobs" ? ["src/**/messages.*", "src/**/errors.*"] : []
-      ),
-    });
-    findFiles.mockResolvedValue([
-      { fsPath: "/proj/src/messages.yaml" },
-      { fsPath: "/proj/src/errors.json" },
-    ]);
-    openTextDocument.mockResolvedValue({
-      uri: { fsPath: "/proj/src/errors.json" },
-      getText: () => "{}",
-      save: jest.fn(),
-    });
-    showTextDocument.mockResolvedValue({
-      selection: undefined,
-      revealRange: jest.fn(),
-    });
-
-    await activate(context);
-    const handler = getCommandHandler(
-      "java-message-key-navigator.addPropertyKey"
-    );
-
-    await handler("NEW_KEY", "/proj/src/errors.json");
-    await flushMicrotasks(12);
-
-    expect(showQuickPick).not.toHaveBeenCalled();
-    expect(utils.addPropertyKey).toHaveBeenCalledWith(
-      "NEW_KEY",
-      "/proj/src/errors.json"
-    );
-  });
-
   it("propertyFileGlobs 変更後に新しい glob で watcher が再作成される", async () => {
     getConfiguration.mockReturnValue({
       get: jest.fn((key: string) =>
