@@ -89,7 +89,7 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
     const actions = await provider.provideCodeActions(doc, range, context);
     assert.strictEqual(actions.length, 1, "Expected one action");
 
-    const expectedTitle = `💾 Add "${key}" to file.properties`;
+    const expectedTitle = `💾 Add "${key}" to properties file`;
     expect(appendLineSpy).toHaveBeenNthCalledWith(
       1,
       `🔍 Undefined key: ${key}`
@@ -110,7 +110,7 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
       "java-message-key-navigator.addPropertyKey"
     );
     assert.strictEqual(cmd.title, expectedTitle);
-    assert.deepStrictEqual(cmd.arguments, [key, "/path/to/file.properties"]);
+    assert.deepStrictEqual(cmd.arguments, [key]);
 
     assert.deepStrictEqual(action.diagnostics, [diag]);
   });
@@ -130,7 +130,6 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
 describe("PropertiesQuickFixProvider – glob iteration & fallback", () => {
   let provider: PropertiesQuickFixProvider;
   const doc: any = {
-    // getText から戻る文字列はダブルクォート付き key（例: `"MyKey"`）にしてください
     getText: (_: vscode.Range) => `"MyKey"`,
   };
   const range = {} as vscode.Range;
@@ -158,7 +157,7 @@ describe("PropertiesQuickFixProvider – glob iteration & fallback", () => {
     assert.strictEqual(actions.length, 0);
   });
 
-  it("全 glob を走査し、ヒットしたファイルごとにアクションが返る", async () => {
+  it("全 glob を走査し、ファイルが見つかれば1件のアクションを返す", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: () => ["gA", "gB", "gC"],
     });
@@ -176,14 +175,14 @@ describe("PropertiesQuickFixProvider – glob iteration & fallback", () => {
       diagnostics: [fakeDiag],
     } as any);
 
-    assert.strictEqual(actions.length, 2);
-    assert.strictEqual(actions[0].command?.arguments?.[1], "/dir/B.properties");
-    assert.strictEqual(actions[1].command?.arguments?.[1], "/dir/C.properties");
+    assert.strictEqual(actions.length, 1);
+    assert.deepStrictEqual(actions[0].command?.arguments, ["MyKey"]);
+    // 全 glob が走査されていること
     expect((vscode.workspace.findFiles as jest.Mock).mock.calls.length).toBe(3);
   });
 });
 
-describe("PropertiesQuickFixProvider – 複数 glob の全ファイルを候補に含める", () => {
+describe("PropertiesQuickFixProvider – 複数 glob の全ファイルを走査", () => {
   let provider: PropertiesQuickFixProvider;
   const doc: any = { getText: (_: vscode.Range) => `"NewKey"` };
   const range = {} as vscode.Range;
@@ -243,69 +242,8 @@ describe("PropertiesQuickFixProvider – 重複排除", () => {
       diagnostics: [fakeDiag],
     } as any);
 
+    // 重複排除されて1件のアクション
     assert.strictEqual(actions.length, 1);
-    assert.strictEqual(actions[0].command?.arguments?.[1], samePath);
-  });
-});
-
-describe("PropertiesQuickFixProvider – 複数ファイル時のファイル選択", () => {
-  let provider: PropertiesQuickFixProvider;
-  const doc: any = { getText: (_: vscode.Range) => `"PLF001"` };
-  const range = {} as vscode.Range;
-  const fakeDiag = {
-    code: "undefinedMessageKey",
-    range: { intersection: () => range },
-  } as any;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    provider = new PropertiesQuickFixProvider();
-  });
-
-  it("単一 glob で複数ファイルがマッチした場合、ファイルごとにアクションが返る", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["src/**/*.properties"],
-    });
-    (vscode.workspace.findFiles as jest.Mock).mockResolvedValueOnce([
-      { fsPath: "/proj/src/message.properties" },
-      { fsPath: "/proj/src/error.properties" },
-    ]);
-
-    const actions = await provider.provideCodeActions(doc, range, {
-      diagnostics: [fakeDiag],
-    } as any);
-
-    assert.strictEqual(actions.length, 2);
-    assert.strictEqual(
-      actions[0].command?.arguments?.[1],
-      "/proj/src/message.properties"
-    );
-    assert.strictEqual(
-      actions[1].command?.arguments?.[1],
-      "/proj/src/error.properties"
-    );
-  });
-
-  it("複数 glob で各1件マッチした場合、ファイルごとにアクションが返る", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["msg*.properties", "err*.properties"],
-    });
-    (vscode.workspace.findFiles as jest.Mock)
-      .mockResolvedValueOnce([{ fsPath: "/proj/message.properties" }])
-      .mockResolvedValueOnce([{ fsPath: "/proj/error.properties" }]);
-
-    const actions = await provider.provideCodeActions(doc, range, {
-      diagnostics: [fakeDiag],
-    } as any);
-
-    assert.strictEqual(actions.length, 2);
-    assert.strictEqual(
-      actions[0].command?.arguments?.[1],
-      "/proj/message.properties"
-    );
-    assert.strictEqual(
-      actions[1].command?.arguments?.[1],
-      "/proj/error.properties"
-    );
+    assert.deepStrictEqual(actions[0].command?.arguments, ["DupKey"]);
   });
 });

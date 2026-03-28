@@ -294,50 +294,43 @@ export async function activate(
     // QuickFix コマンドハンドラ
     vscode.commands.registerCommand(
       "java-message-key-navigator.addPropertyKey",
-      async (key: string, filePath?: string) => {
-        let targetPath: string;
-
-        if (filePath) {
-          targetPath = filePath;
-        } else {
-          const config = vscode.workspace.getConfiguration(
-            "java-message-key-navigator"
+      async (key: string) => {
+        const config = vscode.workspace.getConfiguration(
+          "java-message-key-navigator"
+        );
+        const globs: string[] | undefined = config.get("propertyFileGlobs");
+        if (!globs || globs.length === 0) {
+          vscode.window.showWarningMessage(
+            "No propertyFileGlobs defined in settings."
           );
-          const globs: string[] | undefined = config.get("propertyFileGlobs");
-          if (!globs || globs.length === 0) {
-            vscode.window.showWarningMessage(
-              "No propertyFileGlobs defined in settings."
-            );
-            return;
-          }
-
-          let uris: vscode.Uri[] = [];
-          for (const glob of globs) {
-            const found = await vscode.workspace.findFiles(glob);
-            uris.push(...found);
-          }
-          if (uris.length === 0) {
-            vscode.window.showWarningMessage(
-              "No properties files found matching propertyFileGlobs."
-            );
-            return;
-          }
-
-          const picks = uris.map((uri) => ({
-            label: vscode.workspace.asRelativePath(uri),
-            uri,
-          }));
-          const selected = await vscode.window.showQuickPick(picks, {
-            placeHolder: `Select properties file to add the key "${key}"`,
-          });
-          if (!selected) {
-            vscode.window.showInformationMessage("Key addition canceled.");
-            return;
-          }
-          targetPath = selected.uri.fsPath;
+          return;
         }
 
-        await addPropertyKey(key, targetPath);
+        let uris: vscode.Uri[] = [];
+        for (const glob of globs) {
+          const found = await vscode.workspace.findFiles(glob);
+          uris.push(...found);
+        }
+        if (uris.length === 0) {
+          vscode.window.showWarningMessage(
+            "No properties files found matching propertyFileGlobs."
+          );
+          return;
+        }
+
+        const picks = uris.map((uri) => ({
+          label: vscode.workspace.asRelativePath(uri),
+          uri,
+        }));
+        const selected = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Select properties file to add the key "${key}"`,
+        });
+        if (!selected) {
+          vscode.window.showInformationMessage("Key addition canceled.");
+          return;
+        }
+
+        await addPropertyKey(key, selected.uri.fsPath);
 
         propertyCacheDirty = true;
         await queueValidation(async () => {

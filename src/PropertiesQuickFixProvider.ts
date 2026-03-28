@@ -28,7 +28,7 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     );
     const globs: string[] = config.get("propertyFileGlobs", []);
 
-    // ③ 設定された glob をすべて検索して候補ファイルを収集（重複排除）
+    // ③ 設定された glob をすべて検索してファイル存在を確認（重複排除）
     const seen = new Set<string>();
     const uris: vscode.Uri[] = [];
     for (const g of globs) {
@@ -42,19 +42,17 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     }
     if (uris.length === 0) {return [];}
 
-    // ④ ファイルごとにアクションを生成
-    return uris.map((uri) => {
-      const label = uri.fsPath.split("/").pop()!;
-      const title = `💾 Add "${key}" to ${label}`;
-      const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
-      action.diagnostics = [...diagnostics];
-      action.command = {
-        command: "java-message-key-navigator.addPropertyKey",
-        title,
-        arguments: [key, uri.fsPath],
-      };
-      outputChannel.appendLine(`✅ Quick fix added: ${title}`);
-      return action;
-    });
+    // ④ 1件のアクションを返す（ファイル選択はコマンドハンドラ側の showQuickPick で行う）
+    const title = `💾 Add "${key}" to properties file`;
+    const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
+    action.diagnostics = [...diagnostics];
+    action.command = {
+      command: "java-message-key-navigator.addPropertyKey",
+      title,
+      arguments: [key],
+    };
+    outputChannel.appendLine(`✅ Quick fix added: ${title}`);
+
+    return [action];
   }
 }

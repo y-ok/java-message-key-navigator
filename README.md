@@ -28,11 +28,11 @@ Use ⌘ Click (macOS) or Ctrl Click to jump directly to the exact message key in
 When you use a key that doesn’t exist in any of your `.properties` files, a warning will appear automatically. The extension offers a quick fix that:
 
 1. Resolves your configured `propertyFileGlobs` to actual `.properties` files.
-2. If multiple files match, the Quick Fix menu lists each file individually (e.g. `💾 Add "KEY" to message.properties`, `💾 Add "KEY" to error.properties`) — select the target file directly from the menu.
-3. Reads each file line by line, strips comments and blank lines, and builds a list of existing keys.
-4. Checks for duplicate keys, aborting with a warning if the key already exists.
-5. Determines the correct insertion position by finding the first existing key lexicographically greater than your new key — for example, inserting `PLF4997` before `PLF4998` if needed.
-6. Splices the new key-value entry into the file, preserving the original line endings (CRLF/LF), rewrites the file in one go, reopens it, and moves your cursor directly to the inserted line.
+2. Reads each file line by line, strips comments and blank lines, and builds a list of existing keys.
+3. Checks for duplicate keys, aborting with a warning if the key already exists.
+4. Determines the correct insertion position by finding the first existing key lexicographically greater than your new key — for example, inserting `PLF4997` before `PLF4998` if needed.
+5. Splices the new key-value entry into the file, preserving the original line endings (CRLF/LF), rewrites the file in one go, reopens it, and moves your cursor directly to the inserted line.
+6. If multiple `.properties` files are present, prompts you with a dialog so you can select which file to add the new key to, giving you precise control over key organization.
 
 **Custom Extraction Patterns**
 You can configure method call identifiers used to detect message-key invocations, e.g.:
@@ -173,18 +173,23 @@ When no pattern matches, the extension falls back to its default behavior (treat
    ⌘ Click / Ctrl Click to jump to the exact message key in the `.properties` file.
 
 3. **Quick Fix**
-   When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key. If multiple property files match your `propertyFileGlobs`, each file appears as a separate Quick Fix action with the filename displayed (e.g. `💾 Add “KEY” to message.properties`). Select the target file directly from the menu — no additional dialog needed.
+   When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key in the correct sorted position of your chosen file.
+
+4. **Choose Target Property File**
+   If multiple property files are available, a dialog will appear letting you select which file the new key should be added to. This helps you manage multiple `.properties` files without manually editing each one.
 
    ![Quick Fix target property file selection dialog](images/sample2.png)
+
+   ![Quick Fix property file picker](images/sample3.png)
 
    ![Quick Fix insertion result in properties file](images/sample4.png)
 
    ![Quick Fix command and editor interaction](images/sample5.png)
 
-4. **Completion for Existing Keys**
+5. **Completion for Existing Keys**
    As you type inside supported method calls, existing keys are suggested as completion candidates, letting you quickly select an existing key.
 
-5. **Validate All Java Files**
+6. **Validate All Java Files**
    Run command palette: `Java Message Key Navigator: Validate All Files` to validate all `src/main/java/**/*.java` files at once.
 
    ![Validate All Java Files command output](images/sample1.png)
