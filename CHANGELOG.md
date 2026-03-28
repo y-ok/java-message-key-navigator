@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.16] - 2026-03-28
+
+### Fixed (1.0.16)
+
+- Fixed `addPropertyKey` destroying the entire property cache by replacing
+  `loadPropertyDefinitions([targetPath])` (which overwrote the cache with a
+  single file) with `propertyCache[key] = ""` to append only the new key.
+- Fixed `addPropertyKey` corrupting line endings by replacing `os.EOL` with
+  automatic detection of the original line ending style (CRLF or LF).
+- Fixed `argBuilderPatterns` configuration changes not triggering
+  revalidation by adding it to the `onDidChangeConfiguration` handler.
+- Fixed property file external changes (e.g. git pull) not being detected
+  by adding `FileSystemWatcher` instances for each `propertyFileGlobs` entry.
+  Watchers are recreated when the glob configuration changes.
+
+### Refactored (1.0.16)
+
+- Removed unused `findFiles` / `getConfiguration` calls and broken
+  `globs[0]` fallback from `PropertiesQuickFixProvider`. The command
+  handler already performs its own file search via `showQuickPick`, so
+  the provider now passes only `[key]` as the command argument.
+
+### Changed (1.0.16)
+
+- Bumped extension version to **1.0.16**.
+- Replaced `mockClear()` with `mockReset()` in tests to prevent state
+  pollution between test cases.
+
+---
+
 ## [1.0.15] - 2026-03-28
 
 ### Added (1.0.15)

@@ -238,17 +238,17 @@ describe("activate cache/index behavior (additional cases)", () => {
       return disposable();
     });
 
-    createFileSystemWatcher.mockImplementation(() => ({
+    createFileSystemWatcher.mockImplementation((pattern: string) => ({
       onDidCreate: jest.fn((fn: any) => {
-        watcherCreateCb = fn;
+        if (!pattern.includes(".properties")) {watcherCreateCb = fn;}
         return disposable();
       }),
       onDidChange: jest.fn((fn: any) => {
-        watcherChangeCb = fn;
+        if (!pattern.includes(".properties")) {watcherChangeCb = fn;}
         return disposable();
       }),
       onDidDelete: jest.fn((fn: any) => {
-        watcherDeleteCb = fn;
+        if (!pattern.includes(".properties")) {watcherDeleteCb = fn;}
         return disposable();
       }),
       dispose: jest.fn(),
@@ -836,4 +836,130 @@ describe("activate cache/index behavior (additional cases)", () => {
       expect(openTextDocument.mock.calls.length).toBe(fileCount + 1);
     }
   );
+
+  it("argBuilderPatterns 設定変更で全 Java 強制再検証する", async () => {
+    findFiles.mockResolvedValueOnce([{ fsPath: "/src/A.java" }]);
+    openTextDocument.mockResolvedValue(
+      makeJavaDoc("/src/A.java", () => "class A {}")
+    );
+
+    await activate(context);
+    assert.ok(onConfigChangeCb);
+
+    onConfigChangeCb?.({
+      affectsConfiguration: (key: string) =>
+        key === "java-message-key-navigator.argBuilderPatterns",
+    });
+    await flushMicrotasks(12);
+
+    expect(findFiles).toHaveBeenCalledWith(
+      JAVA_INCLUDE_PATTERN,
+      JAVA_EXCLUDE_PATTERN
+    );
+    expect(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("activate 時に propertyFileGlobs の FileSystemWatcher が作成される", async () => {
+    getConfiguration.mockReturnValue({
+      get: jest.fn((key: string) =>
+        key === "propertyFileGlobs" ? ["src/**/*.properties"] : []
+      ),
+    });
+
+    await activate(context);
+
+    const patterns = createFileSystemWatcher.mock.calls.map(
+      (call: any[]) => call[0]
+    );
+    assert.ok(
+      patterns.includes("src/**/*.properties"),
+      `propertyFileGlobs の watcher が登録されていない。登録済み: ${JSON.stringify(patterns)}`
+    );
+  });
+
+  it("propertyFileGlobs のファイルがディスク変更で再バリデーションが走る", async () => {
+    let propChangeCb: ((uri: any) => void) | undefined;
+    getConfiguration.mockReturnValue({
+      get: jest.fn((key: string) =>
+        key === "propertyFileGlobs" ? ["src/**/*.properties"] : []
+      ),
+    });
+    createFileSystemWatcher.mockImplementation((pattern: string) => ({
+      onDidCreate: jest.fn(() => disposable()),
+      onDidChange: jest.fn((fn: any) => {
+        if (pattern !== JAVA_INCLUDE_PATTERN) {
+          propChangeCb = fn;
+        } else {
+          watcherChangeCb = fn;
+        }
+        return disposable();
+      }),
+      onDidDelete: jest.fn(() => disposable()),
+      dispose: jest.fn(),
+    }));
+
+    mockWorkspace.workspaceFolders = [{ uri: { fsPath: "/project" } }];
+    findFiles.mockResolvedValueOnce([{ fsPath: "/project/src/Foo.java" }]);
+    openTextDocument.mockResolvedValue(
+      makeJavaDoc("/project/src/Foo.java", () => "class Foo {}")
+    );
+
+    await activate(context);
+    await flushMicrotasks(12);
+
+    (PropertyValidator.validateProperties as jest.Mock).mockClear();
+    (diagnostic.validatePlaceholders as jest.Mock).mockClear();
+
+    assert.ok(propChangeCb, "propertyFileGlobs 用の onDidChange が登録されていない");
+    propChangeCb?.({ fsPath: "/project/src/main/resources/messages.properties" });
+    await flushMicrotasks(12);
+
+    expect(
+      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("propertyFileGlobs 変更後に新しい glob で watcher が再作成される", async () => {
+    getConfiguration.mockReturnValue({
+      get: jest.fn((key: string) =>
+        key === "propertyFileGlobs" ? ["src/**/messages.yaml"] : []
+      ),
+    });
+
+    await activate(context);
+    assert.ok(onConfigChangeCb);
+
+    const watcherCallsBefore = createFileSystemWatcher.mock.calls.length;
+
+    getConfiguration.mockReturnValue({
+      get: jest.fn((key: string) =>
+        key === "propertyFileGlobs"
+          ? ["src/**/messages.yaml", "src/**/errors.json"]
+          : []
+      ),
+    });
+    findFiles.mockResolvedValueOnce([{ fsPath: "/src/A.java" }]);
+    openTextDocument.mockResolvedValue(
+      makeJavaDoc("/src/A.java", () => "class A {}")
+    );
+
+    onConfigChangeCb?.({
+      affectsConfiguration: (key: string) =>
+        key === "java-message-key-navigator.propertyFileGlobs",
+    });
+    await flushMicrotasks(12);
+
+    const newPatterns = createFileSystemWatcher.mock.calls
+      .slice(watcherCallsBefore)
+      .map((call: any[]) => call[0]);
+    const hasNewWatcher = newPatterns.some((p: string) =>
+      p.includes("errors.json")
+    );
+    assert.ok(
+      hasNewWatcher,
+      `propertyFileGlobs 変更後に新 glob の watcher が作成されていない。新規パターン: ${JSON.stringify(newPatterns)}`
+    );
+  });
 });

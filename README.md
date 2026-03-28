@@ -31,7 +31,7 @@ When you use a key that doesn’t exist in any of your `.properties` files, a wa
 2. Reads each file line by line, strips comments and blank lines, and builds a list of existing keys.
 3. Checks for duplicate keys, aborting with a warning if the key already exists.
 4. Determines the correct insertion position by finding the first existing key lexicographically greater than your new key — for example, inserting `PLF4997` before `PLF4998` if needed.
-5. Splices the new key-value entry into the file, rewrites the file in one go, reopens it, and moves your cursor directly to the inserted line.
+5. Splices the new key-value entry into the file, preserving the original line endings (CRLF/LF), rewrites the file in one go, reopens it, and moves your cursor directly to the inserted line.
 6. If multiple `.properties` files are present, prompts you with a dialog so you can select which file to add the new key to, giving you precise control over key organization.
 
 **Custom Extraction Patterns**
@@ -172,10 +172,10 @@ When no pattern matches, the extension falls back to its default behavior (treat
 2. **Definition**  
    ⌘ Click / Ctrl Click to jump to the exact message key in the `.properties` file.
 
-3. **Quick Fix**  
+3. **Quick Fix**
    When you see “Undefined message key” warnings, click the lightbulb or press `⌨️ Cmd/Ctrl + .` to add the missing key in the correct sorted position of your chosen file.
 
-4. **Choose Target Property File**  
+4. **Choose Target Property File**
    If multiple property files are available, a dialog will appear letting you select which file the new key should be added to. This helps you manage multiple `.properties` files without manually editing each one.
 
    ![Quick Fix target property file selection dialog](images/sample2.png)
@@ -186,10 +186,10 @@ When no pattern matches, the extension falls back to its default behavior (treat
 
    ![Quick Fix command and editor interaction](images/sample5.png)
 
-5. **Completion for Existing Keys**  
+5. **Completion for Existing Keys**
    As you type inside supported method calls, existing keys are suggested as completion candidates, letting you quickly select an existing key.
 
-6. **Validate All Java Files**  
+6. **Validate All Java Files**
    Run command palette: `Java Message Key Navigator: Validate All Files` to validate all `src/main/java/**/*.java` files at once.
 
    ![Validate All Java Files command output](images/sample1.png)

@@ -25,14 +25,6 @@ jest.mock("vscode", () => {
         this.kind = kind;
       }
     },
-    workspace: {
-      getConfiguration: jest
-        .fn()
-        .mockReturnValue({ get: (_key: string, def: any) => def }), // デフォルト globs を返す
-      findFiles: jest
-        .fn()
-        .mockResolvedValue([{ fsPath: "/path/to/file.properties" }]),
-    },
     Uri: {
       file: (fsPath: string) => ({ fsPath }),
     },
@@ -86,7 +78,6 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
     const actions = await provider.provideCodeActions(doc, range, context);
     assert.strictEqual(actions.length, 1, "Expected one action");
 
-    // ログ出力確認
     const expectedTitle = `💾 Add "${key}" to properties file`;
     expect(appendLineSpy).toHaveBeenNthCalledWith(
       1,
@@ -98,7 +89,6 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
     );
 
     const action = actions[0];
-    // Action プロパティ検証
     assert.strictEqual(action.title, expectedTitle);
     assert.strictEqual(action.kind, vscode.CodeActionKind.QuickFix);
     assert.ok(action.command, "Expected action.command to be defined");
@@ -109,10 +99,9 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
       "java-message-key-navigator.addPropertyKey"
     );
     assert.strictEqual(cmd.title, expectedTitle);
-    // key と fileToUse の 2 要素で渡されていること
-    assert.deepStrictEqual(cmd.arguments, [key, "/path/to/file.properties"]);
+    // key のみ渡す（ファイル選択はコマンドハンドラ側の showQuickPick で行う）
+    assert.deepStrictEqual(cmd.arguments, [key]);
 
-    // diagnostics も確認
     assert.deepStrictEqual(action.diagnostics, [diag]);
   });
 
@@ -125,72 +114,5 @@ describe("PropertiesQuickFixProvider.provideCodeActions", () => {
     const actions = await provider.provideCodeActions(doc, range, context);
     assert.deepStrictEqual(actions, []);
     assert.strictEqual(appendLineSpy.mock.calls.length, 0);
-  });
-});
-
-describe("PropertiesQuickFixProvider – glob iteration & fallback", () => {
-  let provider: PropertiesQuickFixProvider;
-  const doc: any = {
-    // getText から戻る文字列はダブルクォート付き key（例: `"MyKey"`）にしてください
-    getText: (_: vscode.Range) => `"MyKey"`,
-  };
-  const range = {} as vscode.Range;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    provider = new PropertiesQuickFixProvider();
-  });
-
-  it("フォールバック: どの glob でもマッチしない → 最初の glob が使われる", async () => {
-    // 設定は ["g1","g2"]
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (_key: string, _def: any) => ["g1", "g2"],
-    });
-    // findFiles は常に空
-    (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([]);
-
-    // undefinedMessageKey のダイアグをひとつだけ用意
-    const fakeDiag = {
-      code: "undefinedMessageKey",
-      range: { intersection: () => range },
-    } as any;
-
-    // await を忘れずに
-    const actions = await provider.provideCodeActions(doc, range, {
-      diagnostics: [fakeDiag],
-    } as any);
-
-    // アクションは必ず 1 件
-    assert.strictEqual(actions.length, 1);
-    // コマンド引数に [key, "g1"] がセットされている
-    assert.deepStrictEqual(actions[0].command?.arguments, ["MyKey", "g1"]);
-  });
-
-  it("最初の glob でマッチしない → 次の glob でマッチし break される", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["gA", "gB", "gC"],
-    });
-    // 1回目: 空 → 2回目: マッチ → 3回目は呼ばれない
-    const uriB = { fsPath: "/dir/B.properties" };
-    (vscode.workspace.findFiles as jest.Mock)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([uriB])
-      .mockResolvedValueOnce([{ fsPath: "/dir/C.properties" }]);
-
-    const fakeDiag = {
-      code: "undefinedMessageKey",
-      range: { intersection: () => range },
-    } as any;
-
-    const actions = await provider.provideCodeActions(doc, range, {
-      diagnostics: [fakeDiag],
-    } as any);
-
-    // 1 件返ってくること
-    assert.strictEqual(actions.length, 1);
-    // コマンド引数は [key, "/dir/B.properties"]
-    assert.deepStrictEqual(actions[0].command?.arguments, ["MyKey", "/dir/B.properties"]);
-    // findFiles は 2 回だけ呼ばれていること
-    expect((vscode.workspace.findFiles as jest.Mock).mock.calls.length).toBe(2);
   });
 });

@@ -22,33 +22,14 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     const key = document.getText(range).replace(/["']/g, "").trim();
     outputChannel.appendLine(`🔍 Undefined key: ${key}`);
 
-    // ② ユーザー設定から glob パターンを取得
-    const config = vscode.workspace.getConfiguration(
-      "java-message-key-navigator"
-    );
-    const globs: string[] = config.get("propertyFileGlobs", [
-      "**/*.properties",
-    ]);
-
-    // ③ 設定された glob をすべて検索して最初にヒットしたファイルを選択
-    const uris: vscode.Uri[] = [];
-    for (const g of globs) {
-      const found = await vscode.workspace.findFiles(g, undefined, 1);
-      if (found.length) {
-        uris.push(found[0]);
-        break;
-      }
-    }
-    const fileToUse = uris.length > 0 ? uris[0].fsPath : globs[0];
-
+    // ② アクションを生成（ファイル選択はコマンドハンドラ側の showQuickPick で行う）
     const title = `💾 Add "${key}" to properties file`;
     const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
     action.diagnostics = diagnostics;
-    // ④ addPropertyKey に key と fileToUse を渡す
     action.command = {
       command: "java-message-key-navigator.addPropertyKey",
       title,
-      arguments: [key, fileToUse],
+      arguments: [key],
     };
     outputChannel.appendLine(`✅ Quick fix added: ${title}`);
 

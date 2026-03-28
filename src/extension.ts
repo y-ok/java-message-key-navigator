@@ -306,7 +306,6 @@ export async function activate(
           return;
         }
 
-        // ファイル一覧取得
         let uris: vscode.Uri[] = [];
         for (const glob of globs) {
           const found = await vscode.workspace.findFiles(glob);
@@ -319,7 +318,6 @@ export async function activate(
           return;
         }
 
-        // ユーザー選択
         const picks = uris.map((uri) => ({
           label: vscode.workspace.asRelativePath(uri),
           uri,
@@ -332,36 +330,7 @@ export async function activate(
           return;
         }
 
-        // 1) ドキュメントを開く
-        const doc = await vscode.workspace.openTextDocument(selected.uri);
-        // 2) Utils でソート挿入＆ファイル書き換え
         await addPropertyKey(key, selected.uri.fsPath);
-        // 3) applyEdit 呼び出し（テスト向けダミー）
-        const edit = new vscode.WorkspaceEdit();
-        await vscode.workspace.applyEdit(edit);
-        // 4) ファイル保存
-        await doc.save();
-        // 5) プロパティファイルをフォーカスして開き、挿入行の「=」の右にカーソルを合わせる
-        const editor = await vscode.window.showTextDocument(doc.uri, {
-          viewColumn: 1,
-          preserveFocus: false,
-          preview: false,
-        });
-        if (editor) {
-          const allLines = doc.getText().split(/\r?\n/);
-          const lineIndex = allLines.findIndex((l) => l.startsWith(`${key}=`));
-          if (lineIndex >= 0) {
-            // 「=」の位置を取得して、その右隣にカーソルを置く
-            const eqPos = allLines[lineIndex].indexOf("=") + 1;
-            const pos = new vscode.Position(lineIndex, eqPos);
-            editor.selection = new vscode.Selection(pos, pos);
-            editor.revealRange(new vscode.Range(pos, pos));
-          }
-        }
-        // 完了通知
-        vscode.window.showInformationMessage(
-          `✅ Key "${key}" added to ${selected.label}`
-        );
 
         propertyCacheDirty = true;
         await queueValidation(async () => {
@@ -415,6 +384,31 @@ export async function activate(
     );
   }
 
+  const revalidateOnPropChange = () => {
+    propertyCacheDirty = true;
+    void queueValidation(async () => {
+      await revalidateCachedJavaFiles();
+    });
+  };
+  let propWatcherDisposables: vscode.Disposable[] = [];
+  const createPropWatchers = (globs: string[]) => {
+    if (typeof vscode.workspace.createFileSystemWatcher !== "function") {
+      return;
+    }
+    for (const d of propWatcherDisposables) {d.dispose();}
+    propWatcherDisposables = [];
+    for (const glob of globs) {
+      const w = vscode.workspace.createFileSystemWatcher(glob);
+      propWatcherDisposables.push(
+        w,
+        w.onDidCreate(revalidateOnPropChange),
+        w.onDidChange(revalidateOnPropChange),
+        w.onDidDelete(revalidateOnPropChange)
+      );
+    }
+    context.subscriptions.push(...propWatcherDisposables);
+  };
+
   if (typeof vscode.workspace.onDidChangeConfiguration === "function") {
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -427,6 +421,9 @@ export async function activate(
           ) ||
           e.affectsConfiguration(
             "java-message-key-navigator.annotationKeyExtractionPatterns"
+          ) ||
+          e.affectsConfiguration(
+            "java-message-key-navigator.argBuilderPatterns"
           );
         if (!affectsPropertyGlobs && !affectsExtractionPatterns) {
           return;
@@ -434,6 +431,7 @@ export async function activate(
         if (affectsPropertyGlobs) {
           propertyCacheDirty = true;
           propertyGlobSignature = "";
+          createPropWatchers(getPropertyFileGlobs());
         }
         void queueValidation(async () => {
           await validateWorkspaceJavaFiles();
@@ -470,6 +468,8 @@ export async function activate(
         clearDiagnosticsForUri(uri);
       })
     );
+
+    createPropWatchers(initialPropertyFileGlobs);
   }
 
   // 初回インデックス（ワークスペースが開かれている場合）
