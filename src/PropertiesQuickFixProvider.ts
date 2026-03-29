@@ -1,11 +1,17 @@
 import * as vscode from "vscode";
 import { outputChannel } from "./outputChannel";
 
+/**
+ * Offers quick fixes for diagnostics related to missing properties entries.
+ */
 export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [
     vscode.CodeActionKind.QuickFix,
   ];
 
+  /**
+   * Creates a quick fix that inserts the missing key into a properties file.
+   */
   public async provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range,
@@ -18,11 +24,11 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
     );
     if (diagnostics.length === 0) {return [];}
 
-    // ① 診断からキー文字列を抜き取り
+    // Extract the missing key from the diagnostic range.
     const key = document.getText(range).replace(/["']/g, "").trim();
     outputChannel.appendLine(`🔍 Undefined key: ${key}`);
 
-    // ② アクションを生成（ファイル選択はコマンドハンドラ側の showQuickPick で行う）
+    // Build the quick fix; the command handler performs file selection.
     const title = `💾 Add "${key}" to properties file`;
     const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
     action.diagnostics = diagnostics;
