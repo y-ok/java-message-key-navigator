@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.17] - 2026-03-29
+
+### Fixed (1.0.17)
+
+- Fixed false-positive placeholder diagnostics for pure varargs calls with a
+  trailing identifier by resolving only trailing excess arguments through type
+  definitions and ignoring them only when they resolve to throwable types.
+- Fixed placeholder validation so unresolved or non-throwable trailing
+  arguments stay on the safe side and continue to produce mismatch diagnostics
+  instead of being silently discarded.
+
+### Changed (1.0.17)
+
+- Bumped extension version to **1.0.17**.
+- Added JSDoc comments across all files under `src/` and translated remaining
+  source-code comments to English.
+- Expanded regression coverage for throwable argument resolution, validation
+  edge cases, and watcher/configuration branches. The test suite now maintains
+  **100%** statement, branch, function, and line coverage.
+
+---
+
 ## [1.0.16] - 2026-03-28
 
 ### Fixed (1.0.16)

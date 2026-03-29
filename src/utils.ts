@@ -4,21 +4,24 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { outputChannel } from "./outputChannel";
 
-// ── モジュール内キャッシュ ─────────────────────────────────
+/**
+ * In-memory cache of resolved message keys and property values.
+ */
 let propertyCache: Record<string, string> = {};
 
 /**
- * Globパターンでマッチする .properties ファイルを読み込み、
- * キー→値 をキャッシュします。
- * @param customPropertyGlobs テスト時や動的指定用のグロブ配列
+ * Loads `.properties` files matched by the configured globs into memory.
+ *
+ * @param customPropertyGlobs Optional glob overrides used by tests or dynamic
+ * configuration flows.
  */
 export async function loadPropertyDefinitions(
   customPropertyGlobs: string[] = []
 ): Promise<void> {
-  // 1) キャッシュ初期化
+  // 1) Reset the in-memory cache.
   propertyCache = {};
 
-  // 2) パターン配列を決定（引数がなければ設定値を読む）
+  // 2) Choose the glob list, falling back to workspace settings when needed.
   const config = vscode.workspace.getConfiguration(
     "java-message-key-navigator"
   );
@@ -27,7 +30,7 @@ export async function loadPropertyDefinitions(
       ? customPropertyGlobs
       : config.get<string[]>("propertyFileGlobs", []);
 
-  // 3) 各グロブで findFiles → 読み込み
+  // 3) Expand each glob and load every matching properties file.
   for (const pattern of globs) {
     outputChannel.appendLine(`🔍 findFiles pattern: ${pattern}`);
     const uris = await vscode.workspace.findFiles(pattern);
@@ -51,36 +54,35 @@ export async function loadPropertyDefinitions(
 }
 
 /**
- * キャッシュされたすべてのキーを返します。
+ * Returns every property key currently present in the cache.
  */
 export function getAllPropertyKeys(): string[] {
   return Object.keys(propertyCache);
 }
 
 /**
- * 指定したキーがキャッシュ内に定義されているかチェックします。
+ * Returns whether the given key exists in the in-memory cache.
  */
 export function isPropertyDefined(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(propertyCache, key);
 }
 
 /**
- * キャッシュからキーの値を取得します。
+ * Returns the cached property value for the given key.
  */
 export function getPropertyValue(key: string): string | undefined {
   return propertyCache[key];
 }
 
 /**
- * settings.json の java-message-key-navigator.messageKeyExtractionPatterns を元に
- * メッセージキー抽出用の正規表現リストを返します。
+ * Builds extraction regexes from the extension configuration.
  */
 export function getCustomPatterns(): RegExp[] {
   const config = vscode.workspace.getConfiguration(
     "java-message-key-navigator"
   );
 
-  // 1) 既存のメソッド呼び出し用パターンを組み立て
+  // 1) Build invocation patterns for configured method calls.
   const methodPatterns = config.get<string[]>(
     "messageKeyExtractionPatterns",
     []
@@ -92,7 +94,7 @@ export function getCustomPatterns(): RegExp[] {
     }
   );
 
-  // 2) アノテーション用の正規表現パターンをそのままコンパイル
+  // 2) Compile configured annotation regex patterns as-is.
   const annotationPatterns = config.get<string[]>(
     "annotationKeyExtractionPatterns",
     []
@@ -101,13 +103,12 @@ export function getCustomPatterns(): RegExp[] {
     (pat) => new RegExp(pat, "g")
   );
 
-  // 3) 両者を結合して返却
+  // 3) Return the combined pattern list.
   return [...invocationRegexes, ...annotationRegexes];
 }
 
 /**
- * 指定したキーが定義されているファイルと位置を返します。
- * propertyFileGlobs にマッチしたファイルのみを検索対象とします。
+ * Finds the location of the first properties entry that defines the key.
  */
 export async function findPropertyLocation(
   key: string
@@ -139,14 +140,14 @@ export async function findPropertyLocation(
 }
 
 /**
- * QuickFix から呼ばれて、指定ファイルのソート順に従い
- * 指定キーを適切な位置に挿入＆カーソル移動します。
+ * Inserts a new property key into the selected file and moves the cursor to
+ * the value position.
  */
 export async function addPropertyKey(key: string, fileToUse: string) {
-  // 1) 元のソースURIをキャプチャ（使用しない場合は省略可）
+  // 1) Capture the source URI from the active editor.
   const sourceUri = vscode.window.activeTextEditor?.document.uri;
 
-  // 2) glob→実ファイル解決
+  // 2) Resolve a glob or relative path to a concrete properties file.
   let targetPath = fileToUse;
   if (!path.isAbsolute(fileToUse) || !fs.existsSync(fileToUse)) {
     const uris = await vscode.workspace.findFiles(fileToUse);
@@ -163,24 +164,24 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     return;
   }
 
-  // 3) ファイルを読み込んで行を取得（元の改行コードを保持）
+  // 3) Read the file while preserving its original line ending style.
   const raw = fs.readFileSync(targetPath, "utf-8");
   const eol = raw.includes("\r\n") ? "\r\n" : "\n";
   const allLines = raw.split(/\r?\n/);
   const label = path.basename(targetPath);
 
-  // 空行・コメントを除外して既存キー一覧を取得
+  // Build the list of existing keys, excluding blank lines and comments.
   const keys = allLines
     .map((line) => line.split("=", 1)[0].trim())
     .filter((k) => k && !k.startsWith("#"));
 
-  // 4) 重複チェック
+  // 4) Reject duplicate keys.
   if (keys.includes(key)) {
     vscode.window.showWarningMessage(`⚠️ "${key}" already exists in ${label}.`);
     return;
   }
 
-  // --- 5) 挿入位置を決定するためのキー→行番号マップを作成 ---
+  // 5) Build a key-to-line-number map used to choose the insertion point.
   const keyLineMap = new Map<string, number>();
   allLines.forEach((line, idx) => {
     const rawKey = line.split("=", 1)[0].trim();
@@ -189,31 +190,31 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     }
   });
 
-  // ソートした全キー＋新規キー
+  // Combine and sort existing keys with the new key.
   const allKeysSorted = [...keys, key].sort((a, b) => a.localeCompare(b));
   const newIdx = allKeysSorted.indexOf(key);
 
   let insertIdx: number;
   if (newIdx === allKeysSorted.length - 1) {
-    // 新キーが最後ならファイル末尾
+    // Insert at the end when the new key sorts last.
     insertIdx = allLines.length;
   } else {
-    // 新キーの次のキーの行番号
+    // Otherwise insert before the next key in sorted order.
     const nextKey = allKeysSorted[newIdx + 1];
     insertIdx = keyLineMap.get(nextKey) ?? allLines.length;
   }
 
-  // 6) 配列に挿入 & 保存
+  // 6) Insert the new line and save the file.
   allLines.splice(insertIdx, 0, `${key}=`);
   fs.writeFileSync(targetPath, allLines.join(eol), "utf-8");
   vscode.window.showInformationMessage(
     `✅ Added "${key}" to ${label}! (line ${insertIdx + 1})`
   );
 
-  // 7) キャッシュ更新（追加したキーだけ反映し、他ファイルのキャッシュを維持）
+  // 7) Update only the new key in cache without rebuilding other entries.
   propertyCache[key] = "";
 
-  // 8) プロパティファイルを１画面で開く
+  // 8) Open the properties file in the primary editor column.
   const propDoc = await vscode.workspace.openTextDocument(targetPath);
   const propEd = await vscode.window.showTextDocument(propDoc, {
     viewColumn: vscode.ViewColumn.One,
@@ -221,11 +222,11 @@ export async function addPropertyKey(key: string, fileToUse: string) {
     preview: false,
   });
 
-  // 9) 挿入行の "=" 右側へカーソルを移動
+  // 9) Move the caret to the value position on the inserted line.
   if (propEd) {
-    // VSCode API で正確に行を取得
+    // Read the inserted line back from the VS Code document.
     const line = propDoc.lineAt(insertIdx);
-    // 行テキスト中の "=" の位置を探し、見つかればその右、なければ行末
+    // Place the caret after "=" when present, otherwise at the end of the line.
     const eqIdx = line.text.indexOf("=");
     const eqPos = eqIdx >= 0 ? eqIdx + 1 : line.text.length;
     const pos = new vscode.Position(insertIdx, eqPos);
@@ -238,7 +239,9 @@ export async function addPropertyKey(key: string, fileToUse: string) {
   );
 }
 
-/** settings の propertyFileGlobs から .properties を全取得 */
+/**
+ * Returns every `.properties` file matched by the configured globs.
+ */
 export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
   const globs = vscode.workspace
     .getConfiguration("java-message-key-navigator")
@@ -251,7 +254,9 @@ export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
   return uris;
 }
 
-/** URI の .properties を行ごとに読み込んで返す */
+/**
+ * Opens a properties file and returns its contents split into lines.
+ */
 export async function readPropertiesFile(
   uri: vscode.Uri
 ): Promise<{ lines: string[] }> {
@@ -259,7 +264,9 @@ export async function readPropertiesFile(
   return { lines: doc.getText().split(/\r?\n/) };
 }
 
-/** キーに対応する値（右辺）を最初にヒットした .properties から返却 */
+/**
+ * Returns the first property value found for the given key.
+ */
 export async function getMessageValueForKey(
   key: string
 ): Promise<string | undefined> {
@@ -281,8 +288,9 @@ export async function getMessageValueForKey(
 }
 
 /**
- * 指定ファイルパスが、チェック対象外ディレクトリ配下かどうかを判定する
- * @param filePath 絶対パス or ワークスペースルートからのパス
+ * Returns whether the given file path should be excluded from validation.
+ *
+ * @param filePath Absolute path or workspace-relative path.
  */
 export function isExcludedFile(filePath: string): boolean {
   const excludedDirs = [
@@ -297,7 +305,7 @@ export function isExcludedFile(filePath: string): boolean {
     "/src/test/",
     "/src/generated/",
   ];
-  // Windowsでも動作するようパス区切りをnormalize
+  // Normalize path separators so the check works on Windows as well.
   const normalized = filePath.replace(/\\/g, "/");
   return excludedDirs.some((dir) => normalized.includes(dir));
 }

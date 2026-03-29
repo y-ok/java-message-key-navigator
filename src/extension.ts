@@ -12,12 +12,26 @@ import {
 } from "./utils";
 import { initializeOutputChannel, outputChannel } from "./outputChannel";
 
+/**
+ * Include glob used when validating Java sources across the workspace.
+ */
 const JAVA_INCLUDE_PATTERN = "**/src/main/java/**/*.java";
+
+/**
+ * Exclude glob used to skip generated, build, and test sources.
+ */
 const JAVA_EXCLUDE_PATTERN =
   "**/{test,tests,src/test/**,src/generated/**,build/**,out/**,target/**}/**";
 
+/**
+ * Filters hover results so excluded files never trigger provider logic.
+ */
 class FilteredHoverProvider implements vscode.HoverProvider {
   constructor(private base: vscode.HoverProvider) {}
+
+  /**
+   * Delegates hover resolution unless the document is excluded.
+   */
   provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -30,8 +44,15 @@ class FilteredHoverProvider implements vscode.HoverProvider {
   }
 }
 
+/**
+ * Filters definition lookups so excluded files never trigger provider logic.
+ */
 class FilteredDefinitionProvider implements vscode.DefinitionProvider {
   constructor(private base: vscode.DefinitionProvider) {}
+
+  /**
+   * Delegates definition resolution unless the document is excluded.
+   */
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -44,8 +65,15 @@ class FilteredDefinitionProvider implements vscode.DefinitionProvider {
   }
 }
 
+/**
+ * Filters quick-fix actions so excluded files never trigger provider logic.
+ */
 class FilteredQuickFixProvider implements vscode.CodeActionProvider {
   constructor(private base: vscode.CodeActionProvider) {}
+
+  /**
+   * Delegates code action creation unless the document is excluded.
+   */
   provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
@@ -59,8 +87,15 @@ class FilteredQuickFixProvider implements vscode.CodeActionProvider {
   }
 }
 
+/**
+ * Filters completion requests so excluded files never trigger provider logic.
+ */
 class FilteredCompletionProvider implements vscode.CompletionItemProvider {
   constructor(private base: vscode.CompletionItemProvider) {}
+
+  /**
+   * Delegates completion resolution unless the document is excluded.
+   */
   provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -74,18 +109,30 @@ class FilteredCompletionProvider implements vscode.CompletionItemProvider {
   }
 }
 
+/**
+ * Activates the extension and registers providers, commands, and validators.
+ */
 export async function activate(
   context: vscode.ExtensionContext & { secrets?: any }
 ) {
   initializeOutputChannel();
 
+  /**
+   * Reads the configured properties globs from extension settings.
+   */
   const getPropertyFileGlobs = (): string[] =>
     vscode.workspace
       .getConfiguration("java-message-key-navigator")
       .get<string[]>("propertyFileGlobs", []) ?? [];
 
+  /**
+   * Converts a list of globs into a stable cache signature.
+   */
   const toGlobSignature = (globs: string[]): string => globs.join("\u0000");
 
+  /**
+   * Computes a compact fingerprint for a Java document's current text.
+   */
   const computeTextFingerprint = (text: string): string => {
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
@@ -112,6 +159,9 @@ export async function activate(
   let propertyGlobSignature = toGlobSignature(initialPropertyFileGlobs);
   let validationQueue: Promise<void> = Promise.resolve();
 
+  /**
+   * Serializes validation work so concurrent events do not race.
+   */
   const queueValidation = (task: () => Promise<void>) => {
     validationQueue = validationQueue.then(task).catch((err) => {
       outputChannel.appendLine(`[Error] Validation queue failed: ${err}`);
@@ -119,11 +169,17 @@ export async function activate(
     return validationQueue;
   };
 
+  /**
+   * Clears both diagnostic collections for a single URI.
+   */
   const clearDiagnosticsForUri = (uri: vscode.Uri) => {
     propDiagnostics.delete?.(uri);
     phDiagnostics.delete?.(uri);
   };
 
+  /**
+   * Cancels any pending debounce timer for the given document URI.
+   */
   const clearValidationTimer = (uri: vscode.Uri) => {
     const cacheKey = uri.fsPath;
     const timer = validationTimers.get(cacheKey);
@@ -132,6 +188,9 @@ export async function activate(
     validationTimers.delete(cacheKey);
   };
 
+  /**
+   * Validates one Java document and updates the cache if its fingerprint changed.
+   */
   const validateJavaDocument = async (
     document: vscode.TextDocument,
     force = false
@@ -164,6 +223,9 @@ export async function activate(
     return true;
   };
 
+  /**
+   * Opens and validates a Java file from its URI.
+   */
   const validateJavaUri = async (uri: vscode.Uri, force = false) => {
     if (!uri.fsPath.endsWith(".java") || isExcludedFile(uri.fsPath)) {
       return false;
@@ -177,6 +239,9 @@ export async function activate(
     }
   };
 
+  /**
+   * Revalidates every in-scope Java source file in the workspace.
+   */
   const validateWorkspaceJavaFiles = async (): Promise<{
     checked: number;
     skipped: number;
@@ -188,7 +253,7 @@ export async function activate(
       JAVA_EXCLUDE_PATTERN
     );
 
-    // ワークスペース全体の再評価では毎回診断を作り直す。
+    // Rebuild diagnostics from scratch during full-workspace validation.
     propDiagnostics.clear();
     phDiagnostics.clear();
 
@@ -237,6 +302,9 @@ export async function activate(
     return { checked, skipped, total: found.size };
   };
 
+  /**
+   * Revalidates Java files already known to the cache after property changes.
+   */
   const revalidateCachedJavaFiles = async () => {
     if (javaValidationCache.size === 0) {
       return;
@@ -250,6 +318,9 @@ export async function activate(
     }
   };
 
+  /**
+   * Debounces validation for a single Java document.
+   */
   const scheduleAll = (doc: vscode.TextDocument) => {
     if (doc.languageId !== "java" || isExcludedFile(doc.uri.fsPath)) {
       return;
@@ -266,17 +337,17 @@ export async function activate(
   };
 
   context.subscriptions.push(
-    // HoverProvider
+    // Hover provider
     vscode.languages.registerHoverProvider(
       selector,
       new FilteredHoverProvider(new PropertiesHoverProvider())
     ),
-    // DefinitionProvider
+    // Definition provider
     vscode.languages.registerDefinitionProvider(
       selector,
       new FilteredDefinitionProvider(new PropertiesDefinitionProvider())
     ),
-    // CodeActionProvider (QuickFix)
+    // Code action provider (Quick Fix)
     vscode.languages.registerCodeActionsProvider(
       selector,
       new FilteredQuickFixProvider(new PropertiesQuickFixProvider()),
@@ -285,13 +356,13 @@ export async function activate(
           PropertiesQuickFixProvider.providedCodeActionKinds,
       }
     ),
-    // CompletionItemProvider
+    // Completion item provider
     vscode.languages.registerCompletionItemProvider(
       selector,
       new FilteredCompletionProvider(new MessageKeyCompletionProvider()),
       '"'
     ),
-    // QuickFix コマンドハンドラ
+    // Quick Fix command handler
     vscode.commands.registerCommand(
       "java-message-key-navigator.addPropertyKey",
       async (key: string) => {
@@ -340,7 +411,7 @@ export async function activate(
     )
   );
 
-  // === Validate all Java files in the workspace ===
+  // Validate all Java files in the workspace.
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "java-message-key-navigator.validateAll",
@@ -355,7 +426,7 @@ export async function activate(
     )
   );
 
-  // バリデーション（ファイルオープン・変更・保存・エディタ切替時）
+  // Trigger validation on open, change, save, and active-editor switches.
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(scheduleAll),
     vscode.workspace.onDidChangeTextDocument((e) => scheduleAll(e.document)),
@@ -384,6 +455,9 @@ export async function activate(
     );
   }
 
+  /**
+   * Marks properties data dirty and schedules revalidation for cached Java files.
+   */
   const revalidateOnPropChange = () => {
     propertyCacheDirty = true;
     void queueValidation(async () => {
@@ -391,6 +465,10 @@ export async function activate(
     });
   };
   let propWatcherDisposables: vscode.Disposable[] = [];
+
+  /**
+   * Recreates file watchers for every configured properties glob.
+   */
   const createPropWatchers = (globs: string[]) => {
     if (typeof vscode.workspace.createFileSystemWatcher !== "function") {
       return;
@@ -472,7 +550,7 @@ export async function activate(
     createPropWatchers(initialPropertyFileGlobs);
   }
 
-  // 初回インデックス（ワークスペースが開かれている場合）
+  // Warm the validation cache when a workspace is already open.
   if (
     Array.isArray(vscode.workspace.workspaceFolders) &&
     vscode.workspace.workspaceFolders.length > 0
@@ -483,12 +561,12 @@ export async function activate(
     });
   }
 
-  // アクティブエディタがあれば即時バリデート
+  // Validate the active editor immediately when one is already open.
   if (vscode.window.activeTextEditor) {
     scheduleAll(vscode.window.activeTextEditor.document);
   }
 
-  // 最後に起動メッセージ
+  // Show the activation message last.
   vscode.window.showInformationMessage(
     "Java Message Key Navigator is now active 🚀"
   );

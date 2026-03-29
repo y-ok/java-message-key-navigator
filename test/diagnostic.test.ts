@@ -3,6 +3,9 @@
  */
 import { strict as assert } from "assert";
 
+const executeCommand = jest.fn();
+const openTextDocument = jest.fn();
+
 // ——— outputChannel モック（呼ばれないが import 必須）
 jest.mock("../src/outputChannel", () => ({
   __esModule: true,
@@ -16,7 +19,8 @@ jest.mock("../src/utils", () => ({ __esModule: true, getMessageValueForKey }));
 // ——— vscode API モック
 jest.mock("vscode", () => ({
   __esModule: true,
-  workspace: { getConfiguration: jest.fn() },
+  workspace: { getConfiguration: jest.fn(), openTextDocument },
+  commands: { executeCommand },
   Diagnostic: class {
     constructor(
       public range: any,
@@ -28,11 +32,53 @@ jest.mock("vscode", () => ({
   Range: class {
     constructor(public start: any, public end: any) {}
   },
+  Position: class {
+    constructor(public line: number, public character: number) {}
+  },
 }));
 
 import * as vscode from "vscode";
 import type { TextDocument, DiagnosticCollection } from "vscode";
 import { validatePlaceholders } from "../src/diagnostic";
+
+function findIdentifierAtOffset(source: string, offset: number): string | null {
+  if (offset < 0 || offset >= source.length) {
+    return null;
+  }
+
+  const isIdentChar = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+  let start = offset;
+  while (start > 0 && isIdentChar(source[start - 1])) {
+    start--;
+  }
+
+  let end = offset;
+  while (end < source.length && isIdentChar(source[end])) {
+    end++;
+  }
+
+  const ident = source.slice(start, end);
+  return ident || null;
+}
+
+function isThrowableLikeIdentifier(name: string): boolean {
+  return /^(e|ex|err|error|exception|throwable|cause)$/i.test(name) ||
+    /(exception|throwable|cause|error)/i.test(name);
+}
+
+function makeLocationLink(fsPath: string, line = 0, character = 0) {
+  return {
+    targetUri: { fsPath, toString: () => fsPath },
+    targetSelectionRange: { start: { line, character } },
+  };
+}
+
+function makeLocation(fsPath: string, line = 0, character = 0) {
+  return {
+    uri: { fsPath, toString: () => fsPath },
+    range: { start: { line, character } },
+  };
+}
 
 describe("validatePlaceholders", () => {
   let doc: TextDocument;
@@ -66,10 +112,49 @@ describe("validatePlaceholders", () => {
 
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: (key: string, def: any) => {
-        if (key === "messageKeyExtractionPatterns") return patterns;
-        if (key === "argBuilderPatterns") return argBuilderPatterns;
+        if (key === "messageKeyExtractionPatterns") {
+          return patterns;
+        }
+        if (key === "argBuilderPatterns") {
+          return argBuilderPatterns;
+        }
         return def;
       },
+    });
+
+    executeCommand.mockImplementation(
+      async (_command: string, uri: any, position: any) => {
+        if (uri?.fsPath !== "/fake/Doc.java") {
+          return [];
+        }
+        const ident = findIdentifierAtOffset(text, position?.character ?? -1);
+        if (!ident || !isThrowableLikeIdentifier(ident)) {
+          return [];
+        }
+
+        const typeName = `${ident}Type`;
+        return [
+          {
+            targetUri: {
+              fsPath: `/fake/${typeName}.java`,
+              toString: () => `/fake/${typeName}.java`,
+            },
+            targetSelectionRange: { start: { line: 0, character: 0 } },
+          },
+        ];
+      }
+    );
+
+    openTextDocument.mockImplementation(async (uri: any) => {
+      const fileName = (uri?.fsPath ?? "ThrowableType")
+        .split("/")
+        .pop()
+        ?.replace(/\.java$/, "") || "ThrowableType";
+      return {
+        uri,
+        lineCount: 1,
+        lineAt: () => ({ text: `class ${fileName} extends RuntimeException {` }),
+      };
     });
   });
 
@@ -291,6 +376,293 @@ describe("validatePlaceholders", () => {
     patterns = ["log"];
     text = `log("MSG", "A", "B")`;
     getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("varargs形式で末尾が通常識別子でも例外扱いせず診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, status)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}, C {2}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("varargs形式で余剰末尾引数が Throwable 型なら診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([
+      {
+        targetUri: { fsPath: "/fake/MyThrowable.java", toString: () => "/fake/MyThrowable.java" },
+        targetSelectionRange: { start: { line: 0, character: 13 } },
+      },
+    ]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/MyThrowable.java", toString: () => "/fake/MyThrowable.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "class MyThrowable extends RuntimeException {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("varargs形式で余剰末尾引数が String 型なら診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, status)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([
+      {
+        targetUri: { fsPath: "/fake/Status.java", toString: () => "/fake/Status.java" },
+        targetSelectionRange: { start: { line: 0, character: 13 } },
+      },
+    ]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/Status.java", toString: () => "/fake/Status.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "class Status extends String {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count|argument count/);
+  });
+
+  it("型解決不能時は安全側で余剰末尾引数を診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue(undefined);
+    openTextDocument.mockResolvedValue(undefined);
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count|argument count/);
+  });
+
+  it("型定義解決コマンドが例外を投げた場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockRejectedValue(new Error("type lookup failed"));
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("型定義 location に選択レンジがない場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([
+      {
+        targetUri: { fsPath: "/fake/Broken.java", toString: () => "/fake/Broken.java" },
+      },
+    ]);
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("型定義ファイルを開けない場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([makeLocationLink("/fake/Missing.java")]);
+    openTextDocument.mockRejectedValue(new Error("open failed"));
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("型定義ファイルに class/record 宣言がない場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([makeLocationLink("/fake/NoDecl.java")]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/NoDecl.java", toString: () => "/fake/NoDecl.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "/* no declaration */" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("型名自体が RuntimeException の場合は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([makeLocation("/fake/RuntimeException.java")]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/RuntimeException.java", toString: () => "/fake/RuntimeException.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "class RuntimeException {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("継承句がない通常型なら診断されること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([makeLocationLink("/fake/PlainType.java")]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/PlainType.java", toString: () => "/fake/PlainType.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "class PlainType {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("基底型の型解決コマンドが失敗した場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockImplementation(async (_command: string, uri: any) => {
+      if (uri?.fsPath === "/fake/Doc.java") {
+        return [makeLocationLink("/fake/CustomThrowable.java")];
+      }
+      throw new Error("base lookup failed");
+    });
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/CustomThrowable.java", toString: () => "/fake/CustomThrowable.java" },
+      lineCount: 1,
+      lineAt: () => ({ text: "class CustomThrowable extends BaseThrowable {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("基底型の型解決結果が undefined の場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockImplementation(async (_command: string, uri: any) => {
+      if (uri?.fsPath === "/fake/Doc.java") {
+        return [makeLocationLink("/fake/CustomThrowable.java")];
+      }
+      return undefined;
+    });
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/CustomThrowable.java", toString: () => "/fake/CustomThrowable.java" },
+      lineAt: () => ({ text: "class CustomThrowable extends BaseThrowable {" }),
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("基底型を再帰的にたどって RuntimeException に到達した場合は診断されないこと", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockImplementation(async (_command: string, uri: any) => {
+      if (uri?.fsPath === "/fake/Doc.java") {
+        return [makeLocationLink("/fake/CustomThrowable.java")];
+      }
+      if (uri?.fsPath === "/fake/CustomThrowable.java") {
+        return [makeLocation("/fake/BaseThrowable.java")];
+      }
+      return [];
+    });
+    openTextDocument.mockImplementation(async (uri: any) => {
+      if (uri?.fsPath === "/fake/CustomThrowable.java") {
+        return {
+          uri,
+          lineCount: 1,
+          lineAt: () => ({ text: "class CustomThrowable extends BaseThrowable {" }),
+        };
+      }
+      return {
+        uri,
+        lineCount: 1,
+        lineAt: () => ({ text: "class BaseThrowable extends RuntimeException {" }),
+      };
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("基底型解決が深すぎる場合は安全側で診断すること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockImplementation(async (_command: string, uri: any) => {
+      const current = uri?.fsPath ?? "/fake/Doc.java";
+      if (current === "/fake/Doc.java") {
+        return [makeLocationLink("/fake/Type0.java")];
+      }
+      const match = current.match(/Type(\d+)\.java$/);
+      if (!match) {
+        return [];
+      }
+      const idx = Number(match[1]);
+      return [makeLocationLink(`/fake/Type${idx + 1}.java`)];
+    });
+    openTextDocument.mockImplementation(async (uri: any) => {
+      const current = uri?.fsPath ?? "/fake/Type0.java";
+      const match = current.match(/Type(\d+)\.java$/);
+      const idx = match ? Number(match[1]) : 0;
+      return {
+        uri,
+        lineCount: 1,
+        lineAt: () => ({ text: `class Type${idx} extends Type${idx + 1} {` }),
+      };
+    });
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("型定義ドキュメントに lineCount がなくても継承解決できること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockResolvedValue([makeLocation("/fake/RuntimeException.java")]);
+    openTextDocument.mockResolvedValue({
+      uri: { fsPath: "/fake/RuntimeException.java", toString: () => "/fake/RuntimeException.java" },
+      lineAt: () => ({ text: "class RuntimeException {" }),
+    });
 
     await validatePlaceholders(doc, collection);
     assert.strictEqual(seen.length, 1);

@@ -1,11 +1,25 @@
 import * as vscode from "vscode";
 import { getMessageValueForKey } from "./utils";
 
+/**
+ * Describes a configured helper that expands to a fixed number of arguments.
+ */
 interface ArgBuilderPattern {
   pattern: string;
   argCount: number;
 }
 
+/**
+ * Represents a split argument together with its start offset inside the call.
+ */
+interface ArgPart {
+  text: string;
+  start: number;
+}
+
+/**
+ * Validates placeholder usage for supported Java message-key invocations.
+ */
 export async function validatePlaceholders(
   document: vscode.TextDocument,
   collection: vscode.DiagnosticCollection
@@ -30,8 +44,8 @@ export async function validatePlaceholders(
     regex.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
-      // 1. カッコ内全体を抜き出す
-      const callStart = regex.lastIndex - 1; // "("の位置
+      // 1. Extract the entire argument list enclosed by the call parentheses.
+      const callStart = regex.lastIndex - 1; // Position of the opening parenthesis.
       let callEnd = callStart,
         depth = 0;
       for (let i = callStart; i < text.length; i++) {
@@ -44,10 +58,10 @@ export async function validatePlaceholders(
       }
       const argString = text.slice(callStart + 1, callEnd);
 
-      // 2. safeSplit で分割（1個目はkey, 2個目以降が引数）
-      const parts = safeSplit(argString);
+      // 2. Split arguments safely; the first entry is the key and the rest are values.
+      const parts = safeSplitWithOffsets(argString);
       if (parts.length === 0) {continue;}
-      const firstArg = parts[0].trim();
+      const firstArg = parts[0].text.trim();
       const keyMatch = firstArg.match(/^(['"])([\s\S]*)\1$/);
       if (!keyMatch) {continue;}
 
@@ -65,14 +79,14 @@ export async function validatePlaceholders(
         continue;
       }
 
-      // 3. プレースホルダー数を算出
+      // 3. Resolve the message and derive the expected placeholder count.
       const messageValue = await getMessageValueForKey(key);
       if (!messageValue) {continue;}
       const placeholders = Array.from(
         messageValue.matchAll(/(?<!\\)\{(\d+)\}/g)
       ).map((m) => Number(m[1]));
 
-      // プレースホルダーの正当性チェック: {0} がない、不連続 など
+      // Validate placeholder ordering, for example missing {0} or skipped indices.
       if (placeholders.length > 0) {
         const sorted = [...new Set(placeholders)].sort((a, b) => a - b);
         const isContinuous = sorted[0] === 0 && sorted.every((v, i) => v === i);
@@ -94,20 +108,20 @@ export async function validatePlaceholders(
       const expectedArgCount =
         placeholders.length > 0 ? Math.max(...placeholders) + 1 : 0;
 
-      // === 例外引数除外ロジック ===
+      // === Ignore special trailing arguments that should not count as placeholders. ===
       if (
         expectedArgCount === 0 &&
         args.length === 1 &&
-        isLikelyExceptionArg(args[0])
+        isLikelyExceptionArg(args[0].text)
       ) {
-        // log("KEY", e) など、例外オブジェクトだけを渡すログ呼び出しは
-        // プレースホルダー検証の実引数としてはカウントしない
+        // Calls such as log("KEY", e) pass only an exception object, which should
+        // not be counted as a placeholder argument.
         args.pop();
       }
 
       if (args.length > 1) {
-        const lastArg = args[args.length - 1].trim();
-        const prevArg = args[args.length - 2].trim();
+        const lastArg = args[args.length - 1].text.trim();
+        const prevArg = args[args.length - 2].text.trim();
 
         const isSingleVar = /^[A-Za-z_$][\w$]*$/.test(lastArg);
         const prevIsArrayLiteral =
@@ -118,60 +132,37 @@ export async function validatePlaceholders(
 
         if (isSingleVar) {
           if (prevIsArrayLiteral) {
-            // 配列直後の末尾変数は常に例外扱いで除外
+            // Treat a trailing identifier after an array literal as an exception argument.
             args.pop();
           } else if (!prevIsJoinCall) {
-            // 純 varargs
-            const precedingCount = args.length - 1; // ex を除いた個数
-            // 2パターンで除外する：
-            // 1) 先行が2個以上（"A","B",ex など）…常に除外（ex を例外として扱う）
-            // 2) 先行が1個 かつ プレースホルダーが1個（"A",ex × "Hi {0}"）…一致させるために除外
+            // For plain varargs calls, only ignore the trailing argument when its
+            // resolved type is throwable-like.
+            const precedingCount = args.length - 1;
             if (
               precedingCount >= 2 ||
               (precedingCount === 1 && expectedArgCount === 1)
             ) {
-              args.pop();
+              const shouldIgnore = await isThrowableArgument(
+                document,
+                args[args.length - 1],
+                callStart + 1
+              );
+              if (shouldIgnore) {
+                args.pop();
+              }
             }
-            // ※ prev が join() のときはこの分岐に入らないので除外しない
           }
-          // varargs の直前が join() のとき（join(), ex）は除外しない
         }
       }
 
-      // 4. 引数カウント
-      let actualArgCount = 0;
-      if (args.length === 0 || (args.length === 1 && args[0].trim() === "")) {
-        actualArgCount = 0;
-      } else if (args.length === 1) {
-        // 配列リテラル or join特別扱い
-        const arrayMatch = args[0].match(
-          /new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{([\s\S]*?)}/
-        );
-        if (arrayMatch) {
-          const arr = safeSplit(arrayMatch[1]);
-          if (arr.length === 1 && /\.join\s*\(/.test(arr[0])) {
-            actualArgCount = expectedArgCount;
-          } else {
-            actualArgCount = arr.filter((e) => e.trim() !== "").length;
-          }
-        } else if (/\.join\s*\(/.test(args[0])) {
-          actualArgCount = expectedArgCount;
-        } else {
-          const builderArgCount = matchArgBuilderPattern(
-            args[0],
-            argBuilderPatterns
-          );
-          if (builderArgCount !== null) {
-            actualArgCount = builderArgCount;
-          } else {
-            actualArgCount = 1;
-          }
-        }
-      } else {
-        actualArgCount = args.filter((e) => e.trim() !== "").length;
-      }
+      // 4. Count the effective arguments after applying supported shortcuts.
+      const actualArgCount = countActualArguments(
+        args,
+        expectedArgCount,
+        argBuilderPatterns
+      );
 
-      // 5. 診断
+      // 5. Emit a diagnostic when the placeholder count does not match.
       if (
         (expectedArgCount === 0 && actualArgCount > 0) ||
         (expectedArgCount > 0 && actualArgCount !== expectedArgCount)
@@ -191,6 +182,9 @@ export async function validatePlaceholders(
   collection.set(document.uri, diagnostics);
 }
 
+/**
+ * Adds a diagnostic only once for the same location and message pair.
+ */
 function pushDiagnosticOnce(
   diagnostics: vscode.Diagnostic[],
   seenDiagnostics: Set<string>,
@@ -206,20 +200,29 @@ function pushDiagnosticOnce(
   diagnostics.push(diagnostic);
 }
 
+/**
+ * Normalizes a configured method pattern so it can be converted to a call regex.
+ */
 function normalizeMethodPattern(pattern: string): string {
   return pattern.trim().replace(/\(\s*$/, "");
 }
 
+/**
+ * Escapes regular-expression metacharacters in literal method names.
+ */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function stripTrailingLocaleArg(args: string[]): boolean {
+/**
+ * Removes a trailing locale argument from the parsed argument list.
+ */
+function stripTrailingLocaleArg(args: ArgPart[]): boolean {
   if (args.length === 0) {
     return false;
   }
 
-  const lastArg = args[args.length - 1];
+  const lastArg = args[args.length - 1].text;
   if (!isLikelyLocaleArg(lastArg)) {
     return false;
   }
@@ -228,6 +231,10 @@ function stripTrailingLocaleArg(args: string[]): boolean {
   return true;
 }
 
+/**
+ * Heuristically detects locale-like expressions that should not count as
+ * message placeholders.
+ */
 function isLikelyLocaleArg(arg: string): boolean {
   const trimmed = arg.trim();
 
@@ -238,34 +245,47 @@ function isLikelyLocaleArg(arg: string): boolean {
   );
 }
 
+/**
+ * Heuristically detects exception-like identifiers used without type
+ * information.
+ */
 function isLikelyExceptionArg(arg: string): boolean {
   const trimmed = arg.trim();
   const isIdentifier = /^[A-Za-z_$][\w$]*$/.test(trimmed);
   if (!isIdentifier) {return false;}
 
-  // catch (Exception e) / catch (...) ex などの短い慣用名
   if (/^(e|ex|err|error|exception|throwable|cause)$/i.test(trimmed)) {
     return true;
   }
 
-  // exceptionObj / dbException / rootCause / throwableError などを許可
   return /(exception|throwable|cause|error)/i.test(trimmed);
 }
 
 /**
- * カンマ分割（文字列リテラル・括弧対応）
+ * Splits a raw argument list while respecting nested syntax and string literals.
  */
 function safeSplit(argString: string): string[] {
-  const result: string[] = [];
+  return safeSplitWithOffsets(argString).map((part) => part.text);
+}
+
+/**
+ * Splits a raw argument list and preserves each part's relative offset.
+ */
+function safeSplitWithOffsets(argString: string): ArgPart[] {
+  const result: ArgPart[] = [];
   let buffer = "";
   let inQuotes = false;
   let quoteChar = "";
   let parenDepth = 0; // ()
   let braceDepth = 0; // {}
   let bracketDepth = 0; // []
+  let tokenStart = -1;
 
   for (let i = 0; i < argString.length; i++) {
     const ch = argString[i];
+    if (tokenStart === -1 && /\S/.test(ch)) {
+      tokenStart = i;
+    }
 
     if (inQuotes) {
       buffer += ch;
@@ -314,28 +334,45 @@ function safeSplit(argString: string): string[] {
       continue;
     }
 
-    // トップレベルのカンマのみで分割
+    // Split only on top-level commas.
     if (
       ch === "," &&
       parenDepth === 0 &&
       braceDepth === 0 &&
       bracketDepth === 0
     ) {
-      result.push(buffer.trim());
+      pushArgPart(result, buffer, tokenStart);
       buffer = "";
+      tokenStart = -1;
       continue;
     }
 
     buffer += ch;
   }
 
-  if (buffer.trim() !== "") {result.push(buffer.trim());}
+  pushArgPart(result, buffer, tokenStart);
   return result;
 }
 
 /**
- * 引数式が argBuilderPatterns に定義されたメソッド呼び出しにマッチするか判定し、
- * マッチした場合は設定された argCount を返す。マッチしなければ null。
+ * Pushes a trimmed argument token into the parsed result list.
+ */
+function pushArgPart(result: ArgPart[], raw: string, tokenStart: number): void {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return;
+  }
+
+  const leadingWhitespace = raw.length - raw.trimStart().length;
+  result.push({
+    text: trimmed,
+    start: tokenStart,
+  });
+}
+
+/**
+ * Matches an argument-builder helper and returns the number of arguments it
+ * contributes.
  */
 function matchArgBuilderPattern(
   argText: string,
@@ -344,11 +381,213 @@ function matchArgBuilderPattern(
   const trimmed = argText.trim();
   for (const { pattern, argCount } of patterns) {
     const esc = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // buildArgs(...), Utils.buildArgs(...), this.buildArgs(...) にマッチ
+    // Match buildArgs(...), Utils.buildArgs(...), or this.buildArgs(...).
     const re = new RegExp(`(?:^|\\.)${esc}\\s*\\(`);
     if (re.test(trimmed)) {
       return argCount;
     }
   }
   return null;
+}
+
+/**
+ * Counts effective placeholder arguments after applying supported shortcuts.
+ */
+function countActualArguments(
+  args: ArgPart[],
+  expectedArgCount: number,
+  argBuilderPatterns: ArgBuilderPattern[]
+): number {
+  const argTexts = args.map((arg) => arg.text);
+  if (
+    argTexts.length === 0 ||
+    (argTexts.length === 1 && argTexts[0].trim() === "")
+  ) {
+    return 0;
+  }
+
+  if (argTexts.length === 1) {
+    const arrayMatch = argTexts[0].match(
+      /new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{([\s\S]*?)}/
+    );
+    if (arrayMatch) {
+      const arr = safeSplit(arrayMatch[1]);
+      if (arr.length === 1 && /\.join\s*\(/.test(arr[0])) {
+        return expectedArgCount;
+      }
+      return arr.filter((e) => e.trim() !== "").length;
+    }
+
+    if (/\.join\s*\(/.test(argTexts[0])) {
+      return expectedArgCount;
+    }
+
+    const builderArgCount = matchArgBuilderPattern(
+      argTexts[0],
+      argBuilderPatterns
+    );
+    if (builderArgCount !== null) {
+      return builderArgCount;
+    }
+
+    return 1;
+  }
+
+  return argTexts.filter((e) => e.trim() !== "").length;
+}
+
+/**
+ * Resolves the trailing argument type and returns whether it is throwable-like.
+ */
+async function isThrowableArgument(
+  document: vscode.TextDocument,
+  arg: ArgPart,
+  baseOffset: number
+): Promise<boolean> {
+  const queryOffset = baseOffset + arg.start;
+  let locations: Array<vscode.Location | vscode.LocationLink> = [];
+  try {
+    locations =
+      (await vscode.commands.executeCommand<
+        Array<vscode.Location | vscode.LocationLink>
+      >(
+        "vscode.executeTypeDefinitionProvider",
+        document.uri,
+        document.positionAt(queryOffset)
+      )) ?? [];
+  } catch {
+    return false;
+  }
+
+  for (const location of locations) {
+    if (await locationResolvesToThrowable(location, new Set(), 0)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Follows a type-definition location chain to determine whether it resolves to
+ * a throwable type.
+ */
+async function locationResolvesToThrowable(
+  location: vscode.Location | vscode.LocationLink,
+  visited: Set<string>,
+  depth: number
+): Promise<boolean> {
+  if (depth > 8) {
+    return false;
+  }
+
+  const targetUri = isLocationLink(location) ? location.targetUri : location.uri;
+  const targetRange = isLocationLink(location)
+    ? (location.targetSelectionRange ?? location.targetRange)
+    : location.range;
+  if (!targetRange) {
+    return false;
+  }
+  const visitKey = `${targetUri.toString()}:${targetRange.start.line}:${targetRange.start.character}`;
+  if (visited.has(visitKey)) {
+    return false;
+  }
+  visited.add(visitKey);
+
+  let doc: vscode.TextDocument;
+  try {
+    doc = await vscode.workspace.openTextDocument(targetUri);
+  } catch {
+    return false;
+  }
+  const declaration = findTypeDeclaration(doc, targetRange.start.line);
+  if (!declaration) {
+    return false;
+  }
+
+  if (isThrowableTypeName(declaration.name)) {
+    return true;
+  }
+
+  if (!declaration.extendsName) {
+    return false;
+  }
+
+  if (isThrowableTypeName(declaration.extendsName)) {
+    return true;
+  }
+
+  const extendsIndex = declaration.lineText.indexOf(declaration.extendsName);
+
+  let baseLocations: Array<vscode.Location | vscode.LocationLink> = [];
+  try {
+    baseLocations =
+      (await vscode.commands.executeCommand<
+        Array<vscode.Location | vscode.LocationLink>
+      >(
+        "vscode.executeTypeDefinitionProvider",
+        doc.uri,
+        new vscode.Position(declaration.line, extendsIndex)
+      )) ?? [];
+  } catch {
+    return false;
+  }
+
+  for (const baseLocation of baseLocations) {
+    if (await locationResolvesToThrowable(baseLocation, visited, depth + 1)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Narrows a VS Code definition result to a {@link vscode.LocationLink}.
+ */
+function isLocationLink(
+  location: vscode.Location | vscode.LocationLink
+): location is vscode.LocationLink {
+  return "targetUri" in location;
+}
+
+/**
+ * Finds a nearby class or record declaration for a resolved Java type.
+ */
+function findTypeDeclaration(
+  document: vscode.TextDocument,
+  aroundLine: number
+): { name: string; extendsName?: string; line: number; lineText: string } | null {
+  const lineCount =
+    typeof (document as any).lineCount === "number"
+      ? (document as any).lineCount
+      : Math.max(aroundLine + 1, 1);
+  const startLine = Math.max(0, aroundLine - 5);
+  const endLine = Math.min(lineCount - 1, aroundLine + 5);
+
+  for (let line = startLine; line <= endLine; line++) {
+    const lineText = document.lineAt(line).text;
+    const match = lineText.match(
+      /\b(?:class|record)\s+([A-Za-z_$][\w$]*)(?:\s+extends\s+([A-Za-z_$][\w$.]*))?/
+    );
+    if (match) {
+      return {
+        name: match[1],
+        extendsName: match[2]?.split(".").pop(),
+        line,
+        lineText,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns whether a simple or qualified type name is throwable-compatible.
+ */
+function isThrowableTypeName(typeName: string): boolean {
+  return /^(?:Throwable|Exception|RuntimeException|Error)$/.test(
+    typeName.split(".").pop()!
+  );
 }

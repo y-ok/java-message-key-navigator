@@ -607,6 +607,28 @@ describe("activate cache/index behavior (additional cases)", () => {
     await expect(activate(context)).resolves.toBeUndefined();
   });
 
+  it("createFileSystemWatcher が未提供でも propertyFileGlobs 設定変更時に失敗しない", async () => {
+    mockWorkspace.createFileSystemWatcher = undefined;
+    getConfiguration.mockReturnValue({
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === "propertyFileGlobs") {
+          return ["src/main/resources/**/*.properties"];
+        }
+        return [];
+      }),
+    });
+
+    await activate(context);
+
+    expect(onConfigChangeCb).toBeDefined();
+    expect(() =>
+      onConfigChangeCb?.({
+        affectsConfiguration: (key: string) =>
+          key === "java-message-key-navigator.propertyFileGlobs",
+      })
+    ).not.toThrow();
+  });
+
   it("queueValidation のタスク失敗時にエラーログを出す", async () => {
     findFiles.mockRejectedValueOnce(new Error("queue boom"));
     await activate(context);

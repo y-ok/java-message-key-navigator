@@ -2,7 +2,13 @@ import * as vscode from "vscode";
 import { getCustomPatterns, getPropertyValue } from "./utils";
 import { outputChannel } from "./outputChannel";
 
+/**
+ * Shows the resolved property value when hovering a supported message key.
+ */
 export class PropertiesHoverProvider implements vscode.HoverProvider {
+  /**
+   * Returns hover content for the message key under the cursor.
+   */
   public provideHover(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -10,7 +16,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
     const text = document.getText();
     const offset = document.offsetAt(position);
 
-    // カスタムパターンを取得 (log("KEY") や @LogStartEnd(...) など)
+    // Collect configured extraction patterns such as method calls and annotations.
     const patterns = getCustomPatterns();
     const processedKeys = new Set<string>();
 
@@ -18,9 +24,9 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
       regex.lastIndex = 0;
       let match: RegExpExecArray | null;
 
-      // ドキュメント全体をパターンマッチ
+      // Match the configured pattern across the whole document.
       while ((match = regex.exec(text)) !== null) {
-        // マッチしたキャプチャグループ (match[1], match[2], …) をすべてキーとして扱う
+        // Treat every captured group as a possible message key.
         const keys = match
           .slice(1)
           .filter((g): g is string => typeof g === "string");
@@ -28,11 +34,11 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
         for (const key of keys) {
           if (!key || processedKeys.has(key)) {continue;}
 
-          // キャプチャ文字列の開始・終了オフセットを計算
+          // Compute the captured key range inside the document text.
           const start = match.index + match[0].indexOf(key);
           const end = start + key.length;
 
-          // カーソル位置がその範囲内ならホバーを返す
+          // Return hover content only when the cursor is inside the key range.
           if (offset >= start && offset <= end) {
             processedKeys.add(key);
             outputChannel.appendLine(
@@ -41,7 +47,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
 
             let value = getPropertyValue(key);
             if (value) {
-              // メッセージ中に "=" が含まれる場合はコードブロックで囲む
+              // Render multi-part values in a code block when they contain "=".
               if (value.includes("=")) {
                 value = "```\n" + value + "\n```";
               }
@@ -55,7 +61,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
       }
     }
 
-    // マッチしなければ何も返さない
+    // Return nothing when the cursor is not on a supported key reference.
     return;
   }
 }

@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
 
-// 再代入可能に let で宣言
+/**
+ * Shared output channel used by the extension for debug and validation logs.
+ */
 export let outputChannel: vscode.OutputChannel;
 
 /**
- * 拡張機能が有効化されたら初回のメッセージを表示
- * すでに作られていれば clear()、作られていなければ create
+ * Creates or resets the extension output channel.
  */
 export function initializeOutputChannel() {
   if (outputChannel) {
@@ -16,7 +17,7 @@ export function initializeOutputChannel() {
     );
   }
 
-  // タブは自動で開かない
+  // Keep the output tab hidden until the user opens it explicitly.
   outputChannel.appendLine(
     "✅ Java Message Key Navigator: output console initialized"
   );

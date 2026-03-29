@@ -1,9 +1,16 @@
 import * as vscode from "vscode";
 import { getAllPropertyKeys, getPropertyValue } from "./utils";
 
+/**
+ * Provides completion candidates for message keys while editing supported Java
+ * method calls and annotations.
+ */
 export class MessageKeyCompletionProvider
   implements vscode.CompletionItemProvider
 {
+  /**
+   * Returns completion items that match the partially typed message key.
+   */
   async provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -24,13 +31,13 @@ export class MessageKeyCompletionProvider
 
     const lineText = document.lineAt(position).text;
 
-    // 行にパターンを含むかだけ判定する
+    // Only check whether the current line contains one of the configured patterns.
     const matchesPattern = patterns.some((pattern) =>
       lineText.includes(pattern)
     );
     if (!matchesPattern) {return undefined;}
 
-    // 入力中の文字を取得
+    // Extract the partial key being typed inside the current string literal.
     const lineUntilPosition = document
       .lineAt(position)
       .text.substring(0, position.character);
@@ -41,6 +48,9 @@ export class MessageKeyCompletionProvider
   }
 }
 
+/**
+ * Builds completion items enriched with the corresponding property value.
+ */
 function generateCompletionItems(input: string): vscode.CompletionItem[] {
   const keys = getAllPropertyKeys();
   const filteredKeys = input

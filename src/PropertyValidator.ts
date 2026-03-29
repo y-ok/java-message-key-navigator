@@ -7,6 +7,10 @@ import {
 } from "./utils";
 import { outputChannel } from "./outputChannel";
 
+/**
+ * Validates that every extracted message key is defined in the configured
+ * properties files.
+ */
 export async function validateProperties(
   document: vscode.TextDocument,
   diagnostics: vscode.DiagnosticCollection,
@@ -53,6 +57,9 @@ export async function validateProperties(
   );
 }
 
+/**
+ * Validates placeholder indices inside a single message definition.
+ */
 export function validateMessagePlaceholders(
   key: string,
   value: string,
@@ -72,7 +79,7 @@ export function validateMessagePlaceholders(
 
   const indices = Array.from(found).sort((a, b) => a - b);
 
-  // チェック条件: {0} が含まれているか ＆ 連番になっているか
+  // Require placeholders to start at {0} and increase without gaps.
   if (indices[0] !== 0 || !indices.every((v, i) => v === i)) {
     return {
       message: `メッセージ内のプレースホルダー {n} は {0} から始まり連番である必要がありますが、不正な順番です: {${indices.join(

@@ -6,14 +6,20 @@ import {
   findPropertyLocation,
 } from "./utils";
 
+/**
+ * Resolves a message key reference to the matching entry in a properties file.
+ */
 export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
+  /**
+   * Returns the definition location for the message key under the cursor.
+   */
   public async provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position
   ): Promise<vscode.Location | null> {
     outputChannel.appendLine("🔍 Executing DefinitionProvider...");
 
-    // propertyFileGlobs を読み込んでキャッシュを更新
+    // Refresh the cache using the configured propertyFileGlobs.
     const customProps = vscode.workspace
       .getConfiguration("java-message-key-navigator")
       .get<string[]>("propertyFileGlobs", []);
@@ -36,7 +42,7 @@ export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
 
         outputChannel.appendLine(`✅ Jump target key: ${key}`);
 
-        // ← ここを await で呼び出す
+        // Resolve the definition target before constructing the VS Code location.
         const loc = await findPropertyLocation(key);
         if (loc) {
           outputChannel.appendLine(
