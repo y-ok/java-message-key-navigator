@@ -1,13 +1,6 @@
 import * as vscode from "vscode";
-import { getMessageValueForKey } from "./utils";
-
-/**
- * Describes a configured helper that expands to a fixed number of arguments.
- */
-interface ArgBuilderPattern {
-  pattern: string;
-  argCount: number;
-}
+import { getAllPropertyKeys, getMessageValueForKey } from "./utils";
+import { inferMethodPatterns, parseCallLikeArg } from "./inference";
 
 /**
  * Represents a split argument together with its start offset inside the call.
@@ -29,12 +22,7 @@ export async function validatePlaceholders(
   const seenDiagnostics = new Set<string>();
   const text = document.getText();
 
-  const config = vscode.workspace.getConfiguration("java-message-key-navigator");
-  const patterns = config.get<string[]>("messageKeyExtractionPatterns", []);
-  const argBuilderPatterns = config.get<ArgBuilderPattern[]>(
-    "argBuilderPatterns",
-    []
-  );
+  const patterns = inferMethodPatterns(text, new Set(getAllPropertyKeys()));
   const regexes = patterns
     .map(normalizeMethodPattern)
     .filter((pat) => pat.length > 0)
@@ -156,11 +144,29 @@ export async function validatePlaceholders(
       }
 
       // 4. Count the effective arguments after applying supported shortcuts.
-      const actualArgCount = countActualArguments(
-        args,
-        expectedArgCount,
-        argBuilderPatterns
-      );
+      let actualArgCount = countActualArguments(args, expectedArgCount);
+      if (args.length === 1) {
+        const singleArgText = args[0].text;
+        const isJoinCall = /\.join\s*\(/.test(singleArgText);
+        const isArrayLiteral =
+          /^new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{[\s\S]*}$/.test(
+            singleArgText.trim()
+          );
+        if (isJoinCall || isArrayLiteral) {
+          // Preserve existing special handling for join()/array literal inputs.
+          actualArgCount = countActualArguments(args, expectedArgCount);
+        } else {
+          const inferred = parseCallLikeArg(singleArgText);
+          if (inferred) {
+            const inferredArrayArgCount = inferReturnedArrayArgCountForCall(
+              text,
+              inferred.methodName,
+              inferred.argCount
+            );
+            actualArgCount = inferredArrayArgCount ?? inferred.argCount;
+          }
+        }
+      }
 
       // 5. Emit a diagnostic when the placeholder count does not match.
       if (
@@ -371,32 +377,11 @@ function pushArgPart(result: ArgPart[], raw: string, tokenStart: number): void {
 }
 
 /**
- * Matches an argument-builder helper and returns the number of arguments it
- * contributes.
- */
-function matchArgBuilderPattern(
-  argText: string,
-  patterns: ArgBuilderPattern[]
-): number | null {
-  const trimmed = argText.trim();
-  for (const { pattern, argCount } of patterns) {
-    const esc = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Match buildArgs(...), Utils.buildArgs(...), or this.buildArgs(...).
-    const re = new RegExp(`(?:^|\\.)${esc}\\s*\\(`);
-    if (re.test(trimmed)) {
-      return argCount;
-    }
-  }
-  return null;
-}
-
-/**
  * Counts effective placeholder arguments after applying supported shortcuts.
  */
 function countActualArguments(
   args: ArgPart[],
-  expectedArgCount: number,
-  argBuilderPatterns: ArgBuilderPattern[]
+  expectedArgCount: number
 ): number {
   const argTexts = args.map((arg) => arg.text);
   if (
@@ -422,18 +407,100 @@ function countActualArguments(
       return expectedArgCount;
     }
 
-    const builderArgCount = matchArgBuilderPattern(
-      argTexts[0],
-      argBuilderPatterns
-    );
-    if (builderArgCount !== null) {
-      return builderArgCount;
-    }
-
     return 1;
   }
 
   return argTexts.filter((e) => e.trim() !== "").length;
+}
+
+/**
+ * Infers argument count when a single helper-call argument resolves to a
+ * locally-declared method that returns an array literal.
+ *
+ * This logic targets syntactically valid Java method declarations.
+ */
+function inferReturnedArrayArgCountForCall(
+  source: string,
+  methodName: string,
+  callArgCount: number
+): number | null {
+  const declarationRegex = new RegExp(
+    `\\b(?:public|protected|private|static|final|synchronized|native|abstract|strictfp|\\s)+` +
+      `[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*\\s*\\[\\s*]\\s*` +
+      `${escapeRegExp(methodName)}\\s*\\(([^)]*)\\)\\s*\\{`,
+    "g"
+  );
+
+  let declarationMatch: RegExpExecArray | null;
+  while ((declarationMatch = declarationRegex.exec(source)) !== null) {
+    const declaredParamCount = countMethodParams(declarationMatch[1].trim());
+    if (declaredParamCount !== callArgCount) {
+      continue;
+    }
+
+    const bodyStart = declarationRegex.lastIndex - 1;
+    const bodyEnd = findMatchingBrace(source, bodyStart);
+    const body = source.slice(bodyStart + 1, bodyEnd);
+    const arrayReturnMatch = body.match(
+      /return\s+new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*]\s*{([\s\S]*?)}\s*;/
+    );
+    if (!arrayReturnMatch) {
+      continue;
+    }
+
+    return safeSplit(arrayReturnMatch[1]).filter((item) => item.trim() !== "").length;
+  }
+
+  return null;
+}
+
+/**
+ * Counts method parameters while ignoring commas inside generic type brackets.
+ */
+function countMethodParams(paramsText: string): number {
+  if (paramsText.length === 0) {
+    return 0;
+  }
+
+  let count = 1;
+  let angleDepth = 0;
+  for (let i = 0; i < paramsText.length; i++) {
+    const ch = paramsText[i];
+    if (ch === "<") {
+      angleDepth++;
+      continue;
+    }
+    if (ch === ">" && angleDepth > 0) {
+      angleDepth--;
+      continue;
+    }
+    if (ch === "," && angleDepth === 0) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Finds the matching `}` for a method body that starts with `{`.
+ */
+function findMatchingBrace(source: string, openBraceIndex: number): number {
+  let depth = 0;
+  let endIndex = openBraceIndex;
+  for (let i = openBraceIndex; i < source.length; i++) {
+    if (source[i] === "{") {
+      depth++;
+      continue;
+    }
+    if (source[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        endIndex = i;
+        break;
+      }
+    }
+  }
+  return endIndex;
 }
 
 /**

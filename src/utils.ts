@@ -3,6 +3,10 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { outputChannel } from "./outputChannel";
+import {
+  inferAnnotationRegexSources,
+  inferMethodPatterns,
+} from "./inference";
 
 /**
  * In-memory cache of resolved message keys and property values.
@@ -77,30 +81,26 @@ export function getPropertyValue(key: string): string | undefined {
 /**
  * Builds extraction regexes from the extension configuration.
  */
-export function getCustomPatterns(): RegExp[] {
-  const config = vscode.workspace.getConfiguration(
-    "java-message-key-navigator"
-  );
+export function getCustomPatterns(documentText = ""): RegExp[] {
+  const definedKeys = new Set(getAllPropertyKeys());
+  const shouldInfer = documentText.trim().length > 0;
+  const inferredMethods = shouldInfer
+    ? inferMethodPatterns(documentText, definedKeys)
+    : [];
+  const inferredAnnotationPatterns = shouldInfer
+    ? inferAnnotationRegexSources(documentText, definedKeys)
+    : [];
 
-  // 1) Build invocation patterns for configured method calls.
-  const methodPatterns = config.get<string[]>(
-    "messageKeyExtractionPatterns",
-    []
-  );
-  const invocationRegexes = [...methodPatterns, "messageSource.getMessage"].map(
+  const invocationRegexes = [...inferredMethods, "messageSource.getMessage"].map(
     (method) => {
       const esc = method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return new RegExp(`(?:[\\w$]+\\.)?${esc}\\(\\s*['"]([^'"]+)['"]`, "g");
     }
   );
 
-  // 2) Compile configured annotation regex patterns as-is.
-  const annotationPatterns = config.get<string[]>(
-    "annotationKeyExtractionPatterns",
-    []
-  );
-  const annotationRegexes = annotationPatterns.map(
-    (pat) => new RegExp(pat, "g")
+  // 2) Compile inferred annotation regex patterns.
+  const annotationRegexes = inferredAnnotationPatterns.map((pat) =>
+    new RegExp(pat, "g")
   );
 
   // 3) Return the combined pattern list.

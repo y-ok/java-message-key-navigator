@@ -25,7 +25,7 @@ export async function validateProperties(
   }
 
   const text = document.getText();
-  const patterns = getCustomPatterns();
+  const patterns = getCustomPatterns(text);
   const errors: vscode.Diagnostic[] = [];
   outputChannel.appendLine("🔍 Starting properties validation...");
 

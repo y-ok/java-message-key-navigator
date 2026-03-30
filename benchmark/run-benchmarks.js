@@ -395,8 +395,6 @@ function clearOutModuleCache(outDir) {
 function createBenchmarkRuntime({
   workspaceRoot,
   propertyFileGlobs,
-  messagePatterns,
-  annotationPatterns,
 }) {
   const commandHandlers = new Map();
   const callbacks = {
@@ -498,9 +496,6 @@ function createBenchmarkRuntime({
 
   const configValues = {
     "java-message-key-navigator.propertyFileGlobs": propertyFileGlobs,
-    "java-message-key-navigator.messageKeyExtractionPatterns": messagePatterns,
-    "java-message-key-navigator.annotationKeyExtractionPatterns":
-      annotationPatterns,
   };
 
   function registerCallback(bucket, cb) {
