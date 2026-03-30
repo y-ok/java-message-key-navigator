@@ -17,7 +17,7 @@ export class PropertiesHoverProvider implements vscode.HoverProvider {
     const offset = document.offsetAt(position);
 
     // Collect configured extraction patterns such as method calls and annotations.
-    const patterns = getCustomPatterns();
+    const patterns = getCustomPatterns(text);
     const processedKeys = new Set<string>();
 
     for (const regex of patterns) {

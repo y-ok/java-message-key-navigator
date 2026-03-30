@@ -2,6 +2,11 @@ import { strict as assert } from "assert";
 import type { TextDocument, Position, CompletionItem } from "vscode";
 import * as vscode from "vscode";
 import * as utils from "../src/utils";
+import {
+  inferAnnotationTargets,
+  inferMethodPatterns,
+  matchesInferredCompletionContext,
+} from "../src/inference";
 import { MessageKeyCompletionProvider } from "../src/CompletionProvider";
 
 jest.mock("vscode", () => {
@@ -59,17 +64,24 @@ jest.mock("../src/utils", () => ({
   getPropertyValue: jest.fn(),
 }));
 
+jest.mock("../src/inference", () => ({
+  __esModule: true,
+  inferMethodPatterns: jest.fn(),
+  inferAnnotationTargets: jest.fn(),
+  matchesInferredCompletionContext: jest.fn(),
+}));
+
 describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   let provider: MessageKeyCompletionProvider;
   let fakeChannel: any;
   let doc: TextDocument;
   let currentLine: string;
+  let currentText: string;
 
   beforeEach(() => {
     jest.resetAllMocks();
     provider = new MessageKeyCompletionProvider();
 
-    // utils モック設定
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue([
       "user.name",
       "admin.key",
@@ -80,7 +92,10 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
       (k: string) => `value:${k}`
     );
 
-    // stubChannel の仕込み
+    (inferMethodPatterns as jest.Mock).mockReturnValue(["foo"]);
+    (inferAnnotationTargets as jest.Mock).mockReturnValue(new Set<string>());
+    (matchesInferredCompletionContext as jest.Mock).mockReturnValue(true);
+
     const logs: string[] = [];
     fakeChannel = {
       appendLine(msg: string) {
@@ -92,27 +107,25 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
     };
     (vscode as any).__setChannel(fakeChannel);
 
-    // Document モック
+    currentText = "class A {}";
     doc = {
+      getText: () => currentText,
       lineAt: () => ({ text: currentLine }),
     } as any;
   });
 
   it("補完パターン設定が undefined の場合は undefined を返す", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => undefined,
-    });
-    currentLine = `foo("`;
-    const pos = { line: 0, character: currentLine.length } as Position;
+    doc = {
+      lineAt: () => ({ text: `foo("` }),
+    } as any;
+    const pos = { line: 0, character: 5 } as Position;
 
     const res = await provider.provideCompletionItems(doc, pos);
     assert.strictEqual(res, undefined);
   });
 
   it("行がいずれのパターンにもマッチしない場合は undefined を返す", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
+    (matchesInferredCompletionContext as jest.Mock).mockReturnValue(false);
     currentLine = `bar("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -121,9 +134,6 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it('プレフィックス空 (foo(") の場合は全キーを配列で返す', async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
     currentLine = `foo("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -141,9 +151,6 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("入力プレフィックス “Key” でキーをフィルタリングする", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
     currentLine = `foo("Key`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -156,9 +163,9 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("パターン設定が空配列の場合は undefined を返す", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => [],
-    });
+    (inferMethodPatterns as jest.Mock).mockReturnValue([]);
+    (inferAnnotationTargets as jest.Mock).mockReturnValue(new Set<string>());
+    (matchesInferredCompletionContext as jest.Mock).mockReturnValue(false);
     currentLine = `foo("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -167,10 +174,6 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("マッチするパターンかつキャッシュが空の場合は空配列を返す", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
-    // キャッシュを空にする
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue([]);
     currentLine = `foo("`;
     const pos = { line: 0, character: currentLine.length } as Position;
@@ -180,9 +183,6 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("マッチしキャッシュにキーがある場合は CompletionItem[] を返す", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["A", "B"]);
     (utils.getPropertyValue as jest.Mock)
       .mockReturnValueOnce("VA")
@@ -199,16 +199,8 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("パターンが一致し、キャッシュが空の場合は空配列を返す", async () => {
-    // messageKeyExtractionPatterns に "log("、annotationKeyExtractionPatterns は空を設定
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (section: string) => {
-        if (section === "messageKeyExtractionPatterns") return ["log("];
-        if (section === "annotationKeyExtractionPatterns") return [];
-        return undefined;
-      },
-    });
-    // キャッシュを空に
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue([]);
+    (inferMethodPatterns as jest.Mock).mockReturnValue(["log"]);
     currentLine = `log("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -217,18 +209,10 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("annotationKeyExtractionPatterns でのみマッチする場合も補完が動作する", async () => {
-    // messageKeyExtractionPatterns は空、annotationKeyExtractionPatterns に '@Anno(' を設定
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (section: string) => {
-        if (section === "messageKeyExtractionPatterns") return [];
-        if (section === "annotationKeyExtractionPatterns") return ["@Anno("];
-        return undefined;
-      },
-    });
-    // キャッシュに 2 件のキー
+    (inferMethodPatterns as jest.Mock).mockReturnValue([]);
+    (inferAnnotationTargets as jest.Mock).mockReturnValue(new Set(["Anno#value"]));
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["abc", "def"]);
     (utils.getPropertyValue as jest.Mock).mockReturnValue("VAL");
-    // ドキュメント行にアノテーションが含まれる
     currentLine = `@Anno("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -242,19 +226,8 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("getPropertyValue が undefined の場合は空文字として扱う", async () => {
-    // パターンは log( だけ
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (section: string) => {
-        if (section === "messageKeyExtractionPatterns") return ["log("];
-        if (section === "annotationKeyExtractionPatterns") return [];
-        return undefined;
-      },
-    });
-    // キャッシュに 1 件だけ
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["XYZ"]);
-    // getPropertyValue は undefined
     (utils.getPropertyValue as jest.Mock).mockReturnValue(undefined);
-
     currentLine = `log("`;
     const pos = { line: 0, character: currentLine.length } as Position;
 
@@ -262,27 +235,19 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
       doc,
       pos
     )) as CompletionItem[];
-    // value 部分が空文字になる
     assert.strictEqual(items.length, 1);
     assert.strictEqual(items[0].label, "XYZ - ");
     assert.strictEqual(items[0].insertText, "XYZ");
   });
 
   it("messageKeyExtractionPatterns と annotationKeyExtractionPatterns 両方にマッチする場合も補完が動作する", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (section: string) => {
-        if (section === "messageKeyExtractionPatterns") return ["log("];
-        if (section === "annotationKeyExtractionPatterns") return ['@Anno('];
-        return undefined;
-      },
-    });
-    // getAllPropertyKeys / getPropertyValue の戻り値
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["X", "Y"]);
     (utils.getPropertyValue as jest.Mock)
       .mockReturnValueOnce("VX")
-      .mockReturnValueOnce("VY");
+      .mockReturnValueOnce("VY")
+      .mockReturnValueOnce("value:X")
+      .mockReturnValueOnce("value:Y");
 
-    // まず methodPatterns でマッチ
     currentLine = `log("`;
     let pos = { line: 0, character: currentLine.length } as Position;
     let items = (await provider.provideCompletionItems(doc, pos)) as CompletionItem[];
@@ -290,7 +255,6 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
     assert.strictEqual(items[0].label, "X - VX");
     assert.strictEqual(items[1].label, "Y - VY");
 
-    // 次に annotationPatterns でマッチ
     currentLine = `@Anno("`;
     pos = { line: 0, character: currentLine.length } as Position;
     items = (await provider.provideCompletionItems(doc, pos)) as CompletionItem[];
@@ -300,29 +264,20 @@ describe("MessageKeyCompletionProvider.provideCompletionItems", () => {
   });
 
   it("lineUntilPosition.match が null のとき（引用符直前以外）inputMatch=null 分岐をテスト", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["A"]);
     (utils.getPropertyValue as jest.Mock).mockReturnValue("VA");
-    // 引用符なしの位置
     currentLine = `foo(`;
     const pos = { line: 0, character: currentLine.length } as Position;
     const items = (await provider.provideCompletionItems(doc, pos)) as CompletionItem[];
-    // input が空文字なので全キーを返す
-    assert.deepStrictEqual(items.map(i => i.insertText), ["A"]);
+    assert.deepStrictEqual(items.map((i) => i.insertText), ["A"]);
   });
 
   it("getPropertyValue が undefined の場合は空文字として扱う分岐（51行目）をテスト", async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: () => ["foo("],
-    });
     (utils.getAllPropertyKeys as jest.Mock).mockReturnValue(["Z"]);
     (utils.getPropertyValue as jest.Mock).mockReturnValue(undefined);
     currentLine = `foo("`;
     const pos = { line: 0, character: currentLine.length } as Position;
     const items = (await provider.provideCompletionItems(doc, pos)) as CompletionItem[];
-    // 値が空文字になっている
     assert.strictEqual(items[0].label, "Z - ");
     assert.strictEqual((items[0].documentation as any).value, "**Z**\n\n");
   });

@@ -27,7 +27,7 @@ export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
 
     const text = document.getText();
     const offset = document.offsetAt(position);
-    const patterns = getCustomPatterns();
+    const patterns = getCustomPatterns(text);
 
     for (const regex of patterns) {
       regex.lastIndex = 0;

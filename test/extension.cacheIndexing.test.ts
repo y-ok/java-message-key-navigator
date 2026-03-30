@@ -498,7 +498,7 @@ describe("activate cache/index behavior (additional cases)", () => {
     );
   });
 
-  it("抽出パターン設定変更で全 Java 強制再検証する", async () => {
+  it("削除済み抽出設定の変更は再検証トリガーにならない", async () => {
     findFiles.mockResolvedValueOnce([{ fsPath: "/src/A.java" }]);
     openTextDocument.mockResolvedValue(
       makeJavaDoc("/src/A.java", () => "class A {}")
@@ -509,17 +509,12 @@ describe("activate cache/index behavior (additional cases)", () => {
 
     onConfigChangeCb?.({
       affectsConfiguration: (key: string) =>
-        key === "java-message-key-navigator.messageKeyExtractionPatterns",
+        key === "java-message-key-navigator.legacyRemovedSettingA",
     });
     await flushMicrotasks(12);
 
-    expect(findFiles).toHaveBeenCalledWith(
-      JAVA_INCLUDE_PATTERN,
-      JAVA_EXCLUDE_PATTERN
-    );
-    expect((PropertyValidator.validateProperties as jest.Mock).mock.calls.length).toBe(
-      1
-    );
+    expect(findFiles).not.toHaveBeenCalled();
+    expect((PropertyValidator.validateProperties as jest.Mock).mock.calls.length).toBe(0);
   });
 
   it("無関係な設定変更では再検証しない", async () => {
@@ -859,7 +854,7 @@ describe("activate cache/index behavior (additional cases)", () => {
     }
   );
 
-  it("argBuilderPatterns 設定変更で全 Java 強制再検証する", async () => {
+  it("削除済み argBuilder 設定の変更は再検証トリガーにならない", async () => {
     findFiles.mockResolvedValueOnce([{ fsPath: "/src/A.java" }]);
     openTextDocument.mockResolvedValue(
       makeJavaDoc("/src/A.java", () => "class A {}")
@@ -870,17 +865,12 @@ describe("activate cache/index behavior (additional cases)", () => {
 
     onConfigChangeCb?.({
       affectsConfiguration: (key: string) =>
-        key === "java-message-key-navigator.argBuilderPatterns",
+        key === "java-message-key-navigator.legacyRemovedSettingB",
     });
     await flushMicrotasks(12);
 
-    expect(findFiles).toHaveBeenCalledWith(
-      JAVA_INCLUDE_PATTERN,
-      JAVA_EXCLUDE_PATTERN
-    );
-    expect(
-      (PropertyValidator.validateProperties as jest.Mock).mock.calls.length
-    ).toBeGreaterThanOrEqual(1);
+    expect(findFiles).not.toHaveBeenCalled();
+    expect((PropertyValidator.validateProperties as jest.Mock).mock.calls.length).toBe(0);
   });
 
   it("activate 時に propertyFileGlobs の FileSystemWatcher が作成される", async () => {
@@ -909,7 +899,12 @@ describe("activate cache/index behavior (additional cases)", () => {
       ),
     });
     createFileSystemWatcher.mockImplementation((pattern: string) => ({
-      onDidCreate: jest.fn(() => disposable()),
+      onDidCreate: jest.fn((fn: any) => {
+        if (pattern === JAVA_INCLUDE_PATTERN) {
+          watcherCreateCb = fn;
+        }
+        return disposable();
+      }),
       onDidChange: jest.fn((fn: any) => {
         if (pattern !== JAVA_INCLUDE_PATTERN) {
           propChangeCb = fn;
@@ -923,12 +918,15 @@ describe("activate cache/index behavior (additional cases)", () => {
     }));
 
     mockWorkspace.workspaceFolders = [{ uri: { fsPath: "/project" } }];
-    findFiles.mockResolvedValueOnce([{ fsPath: "/project/src/Foo.java" }]);
+    findFiles.mockResolvedValue([{ fsPath: "/project/src/Foo.java" }]);
     openTextDocument.mockResolvedValue(
       makeJavaDoc("/project/src/Foo.java", () => "class Foo {}")
     );
 
     await activate(context);
+    await flushMicrotasks(12);
+    assert.ok(watcherCreateCb, "Java watcher の onDidCreate が登録されていない");
+    watcherCreateCb?.({ fsPath: "/project/src/Foo.java" });
     await flushMicrotasks(12);
 
     (PropertyValidator.validateProperties as jest.Mock).mockClear();

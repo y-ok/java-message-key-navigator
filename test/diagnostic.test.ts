@@ -14,7 +14,19 @@ jest.mock("../src/outputChannel", () => ({
 
 // ——— getMessageValueForKey をモック
 const getMessageValueForKey = jest.fn();
-jest.mock("../src/utils", () => ({ __esModule: true, getMessageValueForKey }));
+const getAllPropertyKeys = jest.fn();
+jest.mock("../src/utils", () => ({
+  __esModule: true,
+  getMessageValueForKey,
+  getAllPropertyKeys,
+}));
+
+const inferMethodPatterns = jest.fn();
+jest.mock("../src/inference", () => ({
+  __esModule: true,
+  inferMethodPatterns,
+  parseCallLikeArg: jest.requireActual("../src/inference").parseCallLikeArg,
+}));
 
 // ——— vscode API モック
 jest.mock("vscode", () => ({
@@ -87,12 +99,12 @@ describe("validatePlaceholders", () => {
   let text: string;
   let offset: number;
   let patterns: string[];
-  let argBuilderPatterns: Array<{ pattern: string; argCount: number }>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     seen = [];
-    argBuilderPatterns = [];
+    getAllPropertyKeys.mockReturnValue([]);
+    inferMethodPatterns.mockImplementation(() => patterns ?? []);
 
     doc = {
       languageId: "java",
@@ -109,18 +121,6 @@ describe("validatePlaceholders", () => {
     collection = {
       set: (_uri: any, diags: any[]) => seen.push(diags),
     } as any;
-
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: (key: string, def: any) => {
-        if (key === "messageKeyExtractionPatterns") {
-          return patterns;
-        }
-        if (key === "argBuilderPatterns") {
-          return argBuilderPatterns;
-        }
-        return def;
-      },
-    });
 
     executeCommand.mockImplementation(
       async (_command: string, uri: any, position: any) => {
@@ -1055,10 +1055,10 @@ describe("validatePlaceholders", () => {
   });
 
   // ===== argBuilderPatterns テスト =====
+  // NOTE: 設定項目は削除済みだが、同等の引数数検証を回帰テストとして維持する。
 
-  it("argBuilderPattern にマッチするメソッド呼び出しは設定された argCount で検証されること", async () => {
+  it("argBuilderPattern にマッチするメソッド呼び出し相当は引数数推論で検証されること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", buildArgs(requestUri))`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
@@ -1067,9 +1067,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("argBuilderPattern にマッチするが argCount がプレースホルダー数と不一致の場合はエラーになること", async () => {
+  it("argBuilderPattern にマッチする相当呼び出しで引数数不一致はエラーになること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", buildArgs(requestUri))`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
 
@@ -1079,9 +1078,163 @@ describe("validatePlaceholders", () => {
     expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
   });
 
-  it("argBuilderPattern が修飾付き呼び出し（Utils.buildArgs）にマッチすること", async () => {
+  it("Object[] を返すヘルパーを varargs に渡した場合は診断されないこと", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(requestUri));
+
+      private Object[] buildOperatorArgs(String requestUri) {
+          return new Object[] { requestUri, DbUserType.OPERATOR.name() };
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue(
+      "Context type [{1}] was set. (URI = [{0}])"
+    );
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("ヘルパーメソッド引数なし + 呼び出し引数なし（Object[]返却）は診断されないこと", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs());
+
+      private Object[] buildOperatorArgs() {
+          return new Object[] { requestUri, DbUserType.OPERATOR.name() };
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue(
+      "Context type [{1}] was set. (URI = [{0}])"
+    );
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("ヘルパーメソッド引数なし + 呼び出し引数ありは不一致診断になること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(requestUri));
+
+      private Object[] buildOperatorArgs() {
+          return new Object[] { requestUri, DbUserType.OPERATOR.name() };
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue(
+      "Context type [{1}] was set. (URI = [{0}])"
+    );
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("ヘルパーメソッド引数あり + 呼び出し引数なしは不一致診断になること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs());
+
+      private Object[] buildOperatorArgs(String requestUri) {
+          return new Object[] { requestUri, DbUserType.OPERATOR.name() };
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue(
+      "Context type [{1}] was set. (URI = [{0}])"
+    );
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("同名ヘルパーが非配列戻り値のみの場合は配列推論せず不一致診断になること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(requestUri));
+
+      private String buildOperatorArgs(String requestUri) {
+          return requestUri;
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue("Context type [{1}] was set. (URI = [{0}])");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("複雑な Object[] return（コメント・引用符・ジェネリクス・匿名クラス）でも要素数推論できること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(mapArg, marker, textArg));
+
+      private Object[] buildOperatorArgs(
+          java.util.Map<String, java.util.List<Integer>> mapArg,
+          char marker,
+          String textArg
+      ) {
+          return new Object[] {
+              mapArg.get("k"), // line comment
+              /* block comment */ 'x',
+              "a\\\"b",
+              arr[0],
+              helper(one, two),
+              new Object() { public String toString() { return "v"; } }
+          };
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue("A{0}B{1}C{2}D{3}E{4}F{5}");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+
+  it("Object[] 戻り値でも return が new でない場合は配列推論せず不一致診断になること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(requestUri));
+
+      private Object[] buildOperatorArgs(String requestUri) {
+          Object[] arr = new Object[] { requestUri, opType };
+          return arr;
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue("Context type [{1}] was set. (URI = [{0}])");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+  it("new Object[2] のような配列生成式は初期化子推論せず不一致診断になること", async () => {
+    patterns = ["infrastructureLogger.log"];
+    text = `
+      infrastructureLogger.log("PLF1031", buildOperatorArgs(requestUri));
+
+      private Object[] buildOperatorArgs(String requestUri) {
+          return new Object[2];
+      }
+    `;
+    getMessageValueForKey.mockResolvedValue("Context type [{1}] was set. (URI = [{0}])");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
+  });
+
+
+  it("修飾付き呼び出し（Utils.buildArgs）も引数数推論で扱えること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 2 }];
     text = `log("MSG", Utils.buildArgs(a, b))`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
 
@@ -1090,9 +1243,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("argBuilderPattern に未登録のメソッド呼び出しは既存ロジック（argCount=1）にフォールスルーすること", async () => {
+  it("未登録メソッド相当でも引数数推論で検証されること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", someOtherMethod(x))`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
 
@@ -1102,24 +1254,18 @@ describe("validatePlaceholders", () => {
     expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
   });
 
-  it("argBuilderPatterns が空の場合は既存動作が維持されること", async () => {
+  it("buildArgs(x) は単一引数として一致すること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [];
     text = `log("MSG", buildArgs(x))`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
     await validatePlaceholders(doc, collection);
-    // buildArgs(x) は単一引数扱い → actualArgCount=1, expectedArgCount=1 → 一致
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("複数の argBuilderPatterns から正しいパターンがマッチすること", async () => {
+  it("複数引数の helper 呼び出しを正しく検証できること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [
-      { pattern: "buildArgs", argCount: 1 },
-      { pattern: "createLogParams", argCount: 2 },
-    ];
     text = `log("MSG", createLogParams(a, b))`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
 
@@ -1128,9 +1274,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("this.buildArgs() のような this 修飾付き呼び出しにマッチすること", async () => {
+  it("this.buildArgs() のような this 修飾付き呼び出しを扱えること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", this.buildArgs(requestUri))`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
@@ -1139,9 +1284,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("深いパッケージ修飾（a.b.c.buildArgs）にマッチすること", async () => {
+  it("深いパッケージ修飾（a.b.c.buildArgs）でも扱えること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 3 }];
     text = `log("MSG", com.example.Utils.buildArgs(a, b, c))`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1} {2}");
 
@@ -1150,21 +1294,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("パターン 'build' が 'buildArgs' に部分一致しないこと", async () => {
+  it("emptyArgs() は 0 引数として扱われること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "build", argCount: 2 }];
-    text = `log("MSG", buildArgs(x))`;
-    getMessageValueForKey.mockResolvedValue("Hi {0}");
-
-    await validatePlaceholders(doc, collection);
-    // "build" は "buildArgs" にマッチしない → フォールスルー → actualArgCount=1
-    assert.strictEqual(seen.length, 1);
-    assert.strictEqual(seen[0].length, 0);
-  });
-
-  it("argCount: 0 の場合はプレースホルダーなしのメッセージと一致すること", async () => {
-    patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "emptyArgs", argCount: 0 }];
     text = `log("MSG", emptyArgs())`;
     getMessageValueForKey.mockResolvedValue("Hello");
 
@@ -1173,9 +1304,8 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("argCount: 0 でプレースホルダーがある場合はエラーになること", async () => {
+  it("emptyArgs() でプレースホルダーがある場合はエラーになること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "emptyArgs", argCount: 0 }];
     text = `log("MSG", emptyArgs())`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
@@ -1185,36 +1315,28 @@ describe("validatePlaceholders", () => {
     expect(seen[0][0].message).toMatch(/Placeholder count.*argument count/);
   });
 
-  it("argBuilderPattern + 例外引数（ex）が末尾にある場合は ex が除外されること", async () => {
+  it("helper + 例外引数（ex）が末尾にある場合は ex が除外されること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", buildArgs(requestUri), ex)`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
     await validatePlaceholders(doc, collection);
-    // args = ["buildArgs(requestUri)", "ex"]
-    // args.length > 1 なので argBuilderPattern 分岐には入らない
-    // 末尾 ex が除外ロジックで処理され、残り1個で一致
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("argBuilderPattern + locale 引数が末尾にある場合は locale が除外されること", async () => {
+  it("helper + locale 引数が末尾にある場合は locale が除外されること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", buildArgs(requestUri), Locale.JAPAN)`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
     await validatePlaceholders(doc, collection);
-    // locale が除外 → args = ["buildArgs(requestUri)"]
-    // args.length === 1 → argBuilderPattern マッチ → argCount=1 → 一致
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("メソッド名の前にスペースがある場合（buildArgs (x)）にもマッチすること", async () => {
+  it("メソッド名の前にスペースがある場合（buildArgs (x)）も扱えること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 1 }];
     text = `log("MSG", buildArgs (requestUri))`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
@@ -1223,16 +1345,12 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("同一ファイルに複数の argBuilderPattern 対象呼び出しがある場合、それぞれ検証されること", async () => {
+  it("同一ファイルに複数 helper 呼び出しがある場合、それぞれ検証されること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [
-      { pattern: "buildArgs", argCount: 1 },
-      { pattern: "createParams", argCount: 2 },
-    ];
     text = `log("MSG1", buildArgs(a)); log("MSG2", createParams(a, b))`;
     getMessageValueForKey
-      .mockResolvedValueOnce("Hi {0}")       // MSG1: 1個 → buildArgs argCount=1 → OK
-      .mockResolvedValueOnce("Hi {0} {1}");  // MSG2: 2個 → createParams argCount=2 → OK
+      .mockResolvedValueOnce("Hi {0}")
+      .mockResolvedValueOnce("Hi {0} {1}");
 
     await validatePlaceholders(doc, collection);
     assert.strictEqual(seen.length, 1);
@@ -1241,14 +1359,10 @@ describe("validatePlaceholders", () => {
 
   it("同一ファイルで一方が一致・他方が不一致の場合、不一致のみエラーになること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [
-      { pattern: "buildArgs", argCount: 1 },
-      { pattern: "createParams", argCount: 2 },
-    ];
     text = `log("MSG1", buildArgs(a)); log("MSG2", createParams(a, b))`;
     getMessageValueForKey
-      .mockResolvedValueOnce("Hi {0}")           // MSG1: OK
-      .mockResolvedValueOnce("Hi {0} {1} {2}");  // MSG2: 3個 vs argCount=2 → NG
+      .mockResolvedValueOnce("Hi {0}")
+      .mockResolvedValueOnce("Hi {0} {1} {2}");
 
     await validatePlaceholders(doc, collection);
     assert.strictEqual(seen.length, 1);
@@ -1256,22 +1370,18 @@ describe("validatePlaceholders", () => {
     expect(seen[0][0].message).toMatch(/Placeholder count \(3\).*argument count \(2\)/);
   });
 
-  it("配列リテラルが優先され、argBuilderPattern は適用されないこと", async () => {
+  it("配列リテラルが優先され、helper 呼び出し推論は適用されないこと", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "buildArgs", argCount: 3 }];
-    // new Object[] { ... } は配列リテラルとして先に処理される
     text = `log("MSG", new Object[] { "A", "B" })`;
     getMessageValueForKey.mockResolvedValue("Hi {0} {1}");
 
     await validatePlaceholders(doc, collection);
-    // 配列リテラルとして要素2個 → プレースホルダー2個 → 一致
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });
 
-  it("パターン名に正規表現の特殊文字が含まれていても正しくエスケープされること", async () => {
+  it("メソッド名に特殊文字（$）が含まれていても引数数推論できること", async () => {
     patterns = ["log"];
-    argBuilderPatterns = [{ pattern: "build$Args", argCount: 1 }];
     text = `log("MSG", build$Args(x))`;
     getMessageValueForKey.mockResolvedValue("Hi {0}");
 
@@ -1279,4 +1389,5 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 0);
   });
+
 });

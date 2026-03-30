@@ -123,27 +123,10 @@ describe("utils.ts", () => {
   });
 
   describe("getCustomPatterns", () => {
-    let cfg: jest.SpyInstance;
-    beforeEach(() => {
-      cfg = jest.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
-        get: (section: string) => {
-          if (section === "messageKeyExtractionPatterns")
-            return ["foo.bar", "baz"];
-          if (section === "annotationKeyExtractionPatterns")
-            return ['@Ann\\("([^"]+)"\\)'];
-          return [];
-        },
-      } as any);
-    });
-    afterEach(() => cfg.mockRestore());
-
-    it("呼び出しパターンとアノテーションパターンの正規表現を生成する", () => {
+    it("入力テキストがない場合は messageSource.getMessage のみを返す", () => {
       const patterns = getCustomPatterns();
-      assert.strictEqual(patterns.length, 4);
-      assert.ok(patterns[0].test('foo.bar("x")'));
-      assert.ok(patterns[1].test('baz("y")'));
-      assert.ok(patterns[2].test('messageSource.getMessage("z")'));
-      assert.ok(patterns[3].test('@Ann("v")'));
+      assert.strictEqual(patterns.length, 1);
+      assert.ok(patterns[0].test('messageSource.getMessage("z")'));
     });
   });
 

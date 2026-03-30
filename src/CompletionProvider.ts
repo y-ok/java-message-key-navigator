@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 import { getAllPropertyKeys, getPropertyValue } from "./utils";
+import {
+  inferAnnotationTargets,
+  inferMethodPatterns,
+  matchesInferredCompletionContext,
+} from "./inference";
 
 /**
  * Provides completion candidates for message keys while editing supported Java
@@ -15,32 +20,27 @@ export class MessageKeyCompletionProvider
     document: vscode.TextDocument,
     position: vscode.Position
   ) {
-    const config = vscode.workspace.getConfiguration(
-      "java-message-key-navigator"
-    );
-    const methodPatterns: string[] | undefined = config.get(
-      "messageKeyExtractionPatterns"
-    );
-    const annotationPatterns: string[] | undefined = config.get(
-      "annotationKeyExtractionPatterns"
-    );
-    const patterns = [...(methodPatterns || []), ...(annotationPatterns || [])];
-    if (patterns.length === 0) {
-      return undefined;
-    }
-
-    const lineText = document.lineAt(position).text;
-
-    // Only check whether the current line contains one of the configured patterns.
-    const matchesPattern = patterns.some((pattern) =>
-      lineText.includes(pattern)
-    );
-    if (!matchesPattern) {return undefined;}
-
-    // Extract the partial key being typed inside the current string literal.
     const lineUntilPosition = document
       .lineAt(position)
       .text.substring(0, position.character);
+    if (typeof (document as any).getText !== "function") {
+      return undefined;
+    }
+    const text = document.getText();
+    const definedKeys = new Set(getAllPropertyKeys());
+    const inferredMethods = inferMethodPatterns(text, definedKeys);
+    const inferredAnnotations = inferAnnotationTargets(text, definedKeys);
+    const matchesPattern = matchesInferredCompletionContext(
+      lineUntilPosition,
+      inferredMethods,
+      inferredAnnotations
+    );
+
+    if (!matchesPattern) {
+      return undefined;
+    }
+
+    // Extract the partial key being typed inside the current string literal.
     const inputMatch = lineUntilPosition.match(/["']([^"']*)$/);
     const input = inputMatch ? inputMatch[1] : "";
 

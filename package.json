@@ -3,7 +3,7 @@
   "displayName": "Java Message Key Navigator",
   "description": "A VS Code extension to assist with Java I18N (internationalization) message management",
   "publisher": "y-ok",
-  "version": "1.0.17",
+  "version": "1.1.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
@@ -19,41 +19,11 @@
     "configuration": {
       "title": "Java Message Key Navigator",
       "properties": {
-        "java-message-key-navigator.messageKeyExtractionPatterns": {
-          "type": "array",
-          "description": "Specifies the method invocation patterns (regular expressions) to target for extracting I18N message keys. For example: infrastructureLogger\\.log. Completion will only be enabled within method calls matching the configured patterns.",
-          "default": []
-        },
         "java-message-key-navigator.propertyFileGlobs": {
           "type": "array",
           "description": "Paths to additional .properties files to include in validation (supports glob patterns)",
           "items": {
             "type": "string"
-          },
-          "default": []
-        },
-        "java-message-key-navigator.annotationKeyExtractionPatterns": {
-          "type": "array",
-          "description": "Regex patterns to extract I18N keys from annotations.",
-          "default": []
-        },
-        "java-message-key-navigator.argBuilderPatterns": {
-          "type": "array",
-          "description": "Defines methods that build argument arrays with a known argument count. When a method call matching a pattern is used as the argument expression, the configured argCount is used for placeholder validation.",
-          "items": {
-            "type": "object",
-            "properties": {
-              "pattern": {
-                "type": "string",
-                "description": "Method name to match (e.g. \"buildArgs\"). Matches bare calls and qualified calls like Utils.buildArgs(...)."
-              },
-              "argCount": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "The number of arguments the method produces."
-              }
-            },
-            "required": ["pattern", "argCount"]
           },
           "default": []
         }

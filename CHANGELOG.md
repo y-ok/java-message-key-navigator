@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.0] - 2026-03-30
+
+### Added (1.1.0)
+
+- Added inference-based key context detection (`src/inference.ts`) for:
+  - message-key invocation methods inferred from Java source and loaded keys,
+  - annotation key attributes inferred from Java annotations.
+- Added placeholder argument-count inference for helper calls that pass
+  `Object[]`-style return values to logger/message methods.
+- Added inference-focused regression tests:
+  - `test/inference.test.ts`,
+  - `test/diagnostic.inference.test.ts`,
+  - `test/CompletionProvider.inference.test.ts`,
+  - `test/utils.inference-patterns.test.ts`.
+
+### Changed (1.1.0)
+
+- Bumped extension version to **1.1.0**.
+- Updated completion, hover/definition key extraction helpers, and placeholder
+  validation to use inferred contexts instead of user-provided extraction
+  patterns.
+- Updated benchmark runtime and validation cache tests to align with
+  inference-based behavior.
+- Updated `README.md` to document automatic context inference and the simplified
+  configuration surface.
+
+### Removed (1.1.0)
+
+- Removed configuration-driven extraction settings:
+  - `messageKeyExtractionPatterns`,
+  - `annotationKeyExtractionPatterns`,
+  - `argBuilderPatterns`.
+- Removed related fallback/config-branch handling that depended on those
+  settings.
+
+### Fixed (1.1.0)
+
+- Fixed placeholder mismatch false positives for helper-call arguments where
+  the helper method returns `Object[]` elements matching message placeholders.
+
+---
+
 ## [1.0.17] - 2026-03-29
 
 ### Fixed (1.0.17)

@@ -493,24 +493,12 @@ export async function activate(
         const affectsPropertyGlobs = e.affectsConfiguration(
           "java-message-key-navigator.propertyFileGlobs"
         );
-        const affectsExtractionPatterns =
-          e.affectsConfiguration(
-            "java-message-key-navigator.messageKeyExtractionPatterns"
-          ) ||
-          e.affectsConfiguration(
-            "java-message-key-navigator.annotationKeyExtractionPatterns"
-          ) ||
-          e.affectsConfiguration(
-            "java-message-key-navigator.argBuilderPatterns"
-          );
-        if (!affectsPropertyGlobs && !affectsExtractionPatterns) {
+        if (!affectsPropertyGlobs) {
           return;
         }
-        if (affectsPropertyGlobs) {
-          propertyCacheDirty = true;
-          propertyGlobSignature = "";
-          createPropWatchers(getPropertyFileGlobs());
-        }
+        propertyCacheDirty = true;
+        propertyGlobSignature = "";
+        createPropWatchers(getPropertyFileGlobs());
         void queueValidation(async () => {
           await validateWorkspaceJavaFiles();
         });
