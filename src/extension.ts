@@ -31,6 +31,10 @@ class FilteredHoverProvider implements vscode.HoverProvider {
 
   /**
    * Delegates hover resolution unless the document is excluded.
+   *
+   * @param document Document where hover was invoked.
+   * @param position Hover position inside the document.
+   * @param token Cancellation token from VS Code.
    */
   provideHover(
     document: vscode.TextDocument,
@@ -52,6 +56,10 @@ class FilteredDefinitionProvider implements vscode.DefinitionProvider {
 
   /**
    * Delegates definition resolution unless the document is excluded.
+   *
+   * @param document Document where definition lookup was invoked.
+   * @param position Cursor position to resolve.
+   * @param token Cancellation token from VS Code.
    */
   provideDefinition(
     document: vscode.TextDocument,
@@ -73,6 +81,11 @@ class FilteredQuickFixProvider implements vscode.CodeActionProvider {
 
   /**
    * Delegates code action creation unless the document is excluded.
+   *
+   * @param document Document where quick fixes were requested.
+   * @param range Selected or diagnostic range for the action request.
+   * @param context Code-action context including diagnostics.
+   * @param token Cancellation token from VS Code.
    */
   provideCodeActions(
     document: vscode.TextDocument,
@@ -95,6 +108,11 @@ class FilteredCompletionProvider implements vscode.CompletionItemProvider {
 
   /**
    * Delegates completion resolution unless the document is excluded.
+   *
+   * @param document Document where completion was requested.
+   * @param position Caret position for completion lookup.
+   * @param token Cancellation token from VS Code.
+   * @param context Completion invocation context.
    */
   provideCompletionItems(
     document: vscode.TextDocument,
@@ -111,6 +129,8 @@ class FilteredCompletionProvider implements vscode.CompletionItemProvider {
 
 /**
  * Activates the extension and registers providers, commands, and validators.
+ *
+ * @param context Extension context used to register subscriptions.
  */
 export async function activate(
   context: vscode.ExtensionContext & { secrets?: any }

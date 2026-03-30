@@ -15,6 +15,9 @@ export class MessageKeyCompletionProvider
 {
   /**
    * Returns completion items that match the partially typed message key.
+   *
+   * @param document Current Java document being edited.
+   * @param position Caret position where completion was requested.
    */
   async provideCompletionItems(
     document: vscode.TextDocument,
@@ -50,6 +53,8 @@ export class MessageKeyCompletionProvider
 
 /**
  * Builds completion items enriched with the corresponding property value.
+ *
+ * @param input Partially typed message key fragment.
  */
 function generateCompletionItems(input: string): vscode.CompletionItem[] {
   const keys = getAllPropertyKeys();

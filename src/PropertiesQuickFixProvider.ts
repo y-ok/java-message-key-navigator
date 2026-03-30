@@ -11,6 +11,10 @@ export class PropertiesQuickFixProvider implements vscode.CodeActionProvider {
 
   /**
    * Creates a quick fix that inserts the missing key into a properties file.
+   *
+   * @param document Source document that reported the undefined key.
+   * @param range Diagnostic range that points to the key usage.
+   * @param context Code-action context including active diagnostics.
    */
   public async provideCodeActions(
     document: vscode.TextDocument,

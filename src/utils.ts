@@ -66,6 +66,8 @@ export function getAllPropertyKeys(): string[] {
 
 /**
  * Returns whether the given key exists in the in-memory cache.
+ *
+ * @param key Property key to check in cache.
  */
 export function isPropertyDefined(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(propertyCache, key);
@@ -73,6 +75,8 @@ export function isPropertyDefined(key: string): boolean {
 
 /**
  * Returns the cached property value for the given key.
+ *
+ * @param key Property key whose value should be returned.
  */
 export function getPropertyValue(key: string): string | undefined {
   return propertyCache[key];
@@ -80,6 +84,8 @@ export function getPropertyValue(key: string): string | undefined {
 
 /**
  * Builds extraction regexes from the extension configuration.
+ *
+ * @param documentText Java source text used for inference-based pattern expansion.
  */
 export function getCustomPatterns(documentText = ""): RegExp[] {
   const definedKeys = new Set(getAllPropertyKeys());
@@ -109,6 +115,8 @@ export function getCustomPatterns(documentText = ""): RegExp[] {
 
 /**
  * Finds the location of the first properties entry that defines the key.
+ *
+ * @param key Property key to locate in configured `.properties` files.
  */
 export async function findPropertyLocation(
   key: string
@@ -142,6 +150,9 @@ export async function findPropertyLocation(
 /**
  * Inserts a new property key into the selected file and moves the cursor to
  * the value position.
+ *
+ * @param key Property key to insert.
+ * @param fileToUse Glob, relative path, or absolute path to the target file.
  */
 export async function addPropertyKey(key: string, fileToUse: string) {
   // 1) Capture the source URI from the active editor.
@@ -256,6 +267,8 @@ export async function findPropertiesFiles(): Promise<vscode.Uri[]> {
 
 /**
  * Opens a properties file and returns its contents split into lines.
+ *
+ * @param uri URI of the properties file to read.
  */
 export async function readPropertiesFile(
   uri: vscode.Uri
@@ -266,6 +279,8 @@ export async function readPropertiesFile(
 
 /**
  * Returns the first property value found for the given key.
+ *
+ * @param key Property key whose value should be resolved.
  */
 export async function getMessageValueForKey(
   key: string

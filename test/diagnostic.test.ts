@@ -740,7 +740,7 @@ describe("validatePlaceholders", () => {
     const messages = seen.flat().map((d) => d.message);
 
     // どちらのエラーも含まれているか確認
-    expect(messages.some((m) => /プレースホルダー.*\{2\}/.test(m))).toBe(true);
+    expect(messages.some((m) => /Placeholders.*\{2\}/.test(m))).toBe(true);
     expect(
       messages.some((m) => /Placeholder count.*argument count/.test(m))
     ).toBe(true);
@@ -1023,7 +1023,7 @@ describe("validatePlaceholders", () => {
 
     const messages = getDiagnosticMessages();
     expect(messages.length).toBeGreaterThanOrEqual(1);
-    expect(messages.some((m) => /プレースホルダー.*\{1\}/.test(m))).toBe(true);
+    expect(messages.some((m) => /Placeholders.*\{1\}/.test(m))).toBe(true);
   });
 
   it("プレースホルダーが連番でない場合（飛び番号）に診断されること", async () => {
@@ -1035,7 +1035,7 @@ describe("validatePlaceholders", () => {
 
     const messages = getDiagnosticMessages();
     expect(messages.length).toBeGreaterThanOrEqual(1);
-    expect(messages.some((m) => /プレースホルダー.*\{0\}.*\{2\}/.test(m))).toBe(
+    expect(messages.some((m) => /Placeholders.*\{0\}.*\{2\}/.test(m))).toBe(
       true
     );
   });
@@ -1049,7 +1049,7 @@ describe("validatePlaceholders", () => {
 
     const messages = getDiagnosticMessages();
     expect(messages.length).toBeGreaterThanOrEqual(1);
-    expect(messages.some((m) => /プレースホルダー.*\{2\}.*\{5\}/.test(m))).toBe(
+    expect(messages.some((m) => /Placeholders.*\{2\}.*\{5\}/.test(m))).toBe(
       true
     );
   });

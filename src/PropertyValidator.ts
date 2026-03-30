@@ -10,6 +10,11 @@ import { outputChannel } from "./outputChannel";
 /**
  * Validates that every extracted message key is defined in the configured
  * properties files.
+ *
+ * @param document Java source document to validate.
+ * @param diagnostics Diagnostic collection to update with key errors.
+ * @param customGlobs Optional glob override for property file lookup.
+ * @param options Validation options such as cache reload behavior.
  */
 export async function validateProperties(
   document: vscode.TextDocument,
@@ -59,6 +64,10 @@ export async function validateProperties(
 
 /**
  * Validates placeholder indices inside a single message definition.
+ *
+ * @param key Message key being validated.
+ * @param value Message template text that may contain placeholders.
+ * @param range Source range used for diagnostic placement.
  */
 export function validateMessagePlaceholders(
   key: string,
@@ -82,7 +91,7 @@ export function validateMessagePlaceholders(
   // Require placeholders to start at {0} and increase without gaps.
   if (indices[0] !== 0 || !indices.every((v, i) => v === i)) {
     return {
-      message: `メッセージ内のプレースホルダー {n} は {0} から始まり連番である必要がありますが、不正な順番です: {${indices.join(
+      message: `Placeholders in message text must start at {0} and be contiguous, but found invalid ordering: {${indices.join(
         "}, {"
       )}}`,
       range,

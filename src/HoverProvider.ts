@@ -8,6 +8,9 @@ import { outputChannel } from "./outputChannel";
 export class PropertiesHoverProvider implements vscode.HoverProvider {
   /**
    * Returns hover content for the message key under the cursor.
+   *
+   * @param document Document containing candidate message-key usages.
+   * @param position Cursor position where hover was triggered.
    */
   public provideHover(
     document: vscode.TextDocument,

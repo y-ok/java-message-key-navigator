@@ -1,26 +1,52 @@
+/**
+ * Parsed representation of a method-call expression.
+ */
 interface ParsedMethodCall {
   methodPath: string;
   args: string[];
 }
 
+/**
+ * Parsed representation of an annotation attribute assignment.
+ */
 interface ParsedAnnotationAttr {
   annotationName: string;
   attrName: string;
   value: string;
 }
 
+/**
+ * Returns whether a character is a valid first identifier character.
+ *
+ * @param ch Character to test.
+ */
 function isIdentifierStart(ch: string): boolean {
   return /[A-Za-z_$]/.test(ch);
 }
 
+/**
+ * Returns whether a character is valid inside an identifier.
+ *
+ * @param ch Character to test.
+ */
 function isIdentifierPart(ch: string): boolean {
   return /[A-Za-z0-9_$]/.test(ch);
 }
 
+/**
+ * Returns whether a character is whitespace.
+ *
+ * @param ch Character to test.
+ */
 function isWhitespace(ch: string): boolean {
   return /\s/.test(ch);
 }
 
+/**
+ * Unescapes basic Java-like escape sequences used in string literals.
+ *
+ * @param raw Raw string-literal body without quote characters.
+ */
 function unescapeSimpleString(raw: string): string {
   let out = "";
   for (let i = 0; i < raw.length; i++) {
@@ -39,6 +65,11 @@ function unescapeSimpleString(raw: string): string {
   return out;
 }
 
+/**
+ * Parses a quoted string literal token and returns its unescaped content.
+ *
+ * @param token Candidate quoted token.
+ */
 function parseStringLiteral(token: string): string | null {
   const trimmed = token.trim();
   if (trimmed.length < 2) {
@@ -51,6 +82,11 @@ function parseStringLiteral(token: string): string | null {
   return unescapeSimpleString(trimmed.slice(1, -1));
 }
 
+/**
+ * Replaces line/block comments with whitespace while preserving offsets.
+ *
+ * @param source Source text to normalize.
+ */
 function stripComments(source: string): string {
   let out = "";
   let i = 0;
@@ -133,6 +169,12 @@ function stripComments(source: string): string {
   return out;
 }
 
+/**
+ * Finds the index of the closing parenthesis that matches `openIndex`.
+ *
+ * @param source Source text containing parentheses.
+ * @param openIndex Index of the opening parenthesis.
+ */
 function findMatchingParen(source: string, openIndex: number): number {
   let depth = 0;
   let inSingle = false;
@@ -173,6 +215,11 @@ function findMatchingParen(source: string, openIndex: number): number {
   return -1;
 }
 
+/**
+ * Splits a comma-separated argument list at top level only.
+ *
+ * @param argsSource Raw argument-list text.
+ */
 function splitTopLevelArgs(argsSource: string): string[] {
   const args: string[] = [];
   let current = "";
@@ -261,6 +308,12 @@ function splitTopLevelArgs(argsSource: string): string[] {
   return args;
 }
 
+/**
+ * Reads a dotted method path by scanning backward from the given index.
+ *
+ * @param source Source text that contains a call-like expression.
+ * @param fromIndex Starting index for backward scanning.
+ */
 function readMethodPathBackward(source: string, fromIndex: number): string | null {
   let i = fromIndex;
   while (i >= 0 && isWhitespace(source[i])) {
@@ -280,11 +333,21 @@ function readMethodPathBackward(source: string, fromIndex: number): string | nul
   return path;
 }
 
+/**
+ * Returns the simple name from a dotted symbol path.
+ *
+ * @param name Possibly qualified symbol name.
+ */
 function simpleName(name: string): string {
   const idx = name.lastIndexOf(".");
   return idx >= 0 ? name.slice(idx + 1) : name;
 }
 
+/**
+ * Parses call-like expressions from source and collects their argument tokens.
+ *
+ * @param source Source text to parse.
+ */
 function parseMethodCalls(source: string): ParsedMethodCall[] {
   const clean = stripComments(source);
   const calls: ParsedMethodCall[] = [];
@@ -308,6 +371,11 @@ function parseMethodCalls(source: string): ParsedMethodCall[] {
   return calls;
 }
 
+/**
+ * Parses a named assignment token such as `value = "foo"` from annotation args.
+ *
+ * @param arg Single annotation argument token.
+ */
 function parseNamedAssignment(arg: string): { name: string; valueToken: string } | null {
   let inSingle = false;
   let inDouble = false;
@@ -367,6 +435,11 @@ function parseNamedAssignment(arg: string): { name: string; valueToken: string }
   return null;
 }
 
+/**
+ * Parses annotation attributes with string-literal values from source.
+ *
+ * @param source Source text to parse.
+ */
 function parseAnnotations(source: string): ParsedAnnotationAttr[] {
   const clean = stripComments(source);
   const parsed: ParsedAnnotationAttr[] = [];
@@ -414,10 +487,22 @@ function parseAnnotations(source: string): ParsedAnnotationAttr[] {
   return parsed;
 }
 
+/**
+ * Escapes regular-expression metacharacters in a plain text token.
+ *
+ * @param value Plain text to escape for regex usage.
+ */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Infers method call patterns whose first argument consistently matches
+ * defined message keys.
+ *
+ * @param source Java source text to inspect.
+ * @param definedKeys Set of known property keys.
+ */
 export function inferMethodPatterns(
   source: string,
   definedKeys: Set<string>
@@ -449,6 +534,12 @@ export function inferMethodPatterns(
   return result;
 }
 
+/**
+ * Collects positive/negative evidence per annotation attribute key.
+ *
+ * @param source Java source text to inspect.
+ * @param definedKeys Set of known property keys.
+ */
 function collectAnnotationStats(
   source: string,
   definedKeys: Set<string>
@@ -467,6 +558,13 @@ function collectAnnotationStats(
   return stats;
 }
 
+/**
+ * Infers annotation-name/attribute targets that consistently point to
+ * defined message keys.
+ *
+ * @param source Java source text to inspect.
+ * @param definedKeys Set of known property keys.
+ */
 export function inferAnnotationTargets(
   source: string,
   definedKeys: Set<string>
@@ -480,6 +578,12 @@ export function inferAnnotationTargets(
   return result;
 }
 
+/**
+ * Builds annotation extraction regex sources from inferred targets.
+ *
+ * @param source Java source text to inspect.
+ * @param definedKeys Set of known property keys.
+ */
 export function inferAnnotationRegexSources(
   source: string,
   definedKeys: Set<string>
@@ -498,6 +602,11 @@ export function inferAnnotationRegexSources(
   return result;
 }
 
+/**
+ * Parses a call-like argument expression and returns callee name and arg count.
+ *
+ * @param argText Argument expression text.
+ */
 export function parseCallLikeArg(
   argText: string
 ): { methodName: string; argCount: number } | null {
@@ -519,6 +628,12 @@ export function parseCallLikeArg(
   return { methodName: simpleName(methodPath), argCount: args.length };
 }
 
+/**
+ * Reads an identifier by scanning backward from the given index.
+ *
+ * @param source Source text containing the identifier.
+ * @param fromIndex Starting index for backward scanning.
+ */
 function readIdentifierBackward(source: string, fromIndex: number): string | null {
   let i = fromIndex;
   while (i >= 0 && isWhitespace(source[i])) {
@@ -535,6 +650,14 @@ function readIdentifierBackward(source: string, fromIndex: number): string | nul
   return id.length > 0 && isIdentifierStart(id[0]) ? id : null;
 }
 
+/**
+ * Returns whether completion is currently invoked inside an inferred message
+ * key context (method call or annotation attribute assignment).
+ *
+ * @param lineUntilPosition Current line content from start to caret position.
+ * @param methodPatterns Inferred method patterns for message keys.
+ * @param annotationTargets Inferred annotation attribute targets.
+ */
 export function matchesInferredCompletionContext(
   lineUntilPosition: string,
   methodPatterns: string[],

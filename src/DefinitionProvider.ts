@@ -12,6 +12,9 @@ import {
 export class PropertiesDefinitionProvider implements vscode.DefinitionProvider {
   /**
    * Returns the definition location for the message key under the cursor.
+   *
+   * @param document Document containing the message-key reference.
+   * @param position Cursor position used to resolve the key token.
    */
   public async provideDefinition(
     document: vscode.TextDocument,

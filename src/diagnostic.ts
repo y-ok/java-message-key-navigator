@@ -12,6 +12,9 @@ interface ArgPart {
 
 /**
  * Validates placeholder usage for supported Java message-key invocations.
+ *
+ * @param document Java source document to validate.
+ * @param collection Diagnostic collection receiving placeholder mismatches.
  */
 export async function validatePlaceholders(
   document: vscode.TextDocument,
@@ -84,7 +87,7 @@ export async function validatePlaceholders(
             seenDiagnostics,
             new vscode.Diagnostic(
               keyRange,
-              `⚠️ プレースホルダーは {0} から始まり連番である必要がありますが、不正な順序です: {${sorted.join(
+              `⚠️ Placeholders must start at {0} and be contiguous, but found invalid ordering: {${sorted.join(
                 "}, {"
               )}}`,
               vscode.DiagnosticSeverity.Error
@@ -190,6 +193,10 @@ export async function validatePlaceholders(
 
 /**
  * Adds a diagnostic only once for the same location and message pair.
+ *
+ * @param diagnostics Target diagnostic array.
+ * @param seenDiagnostics Deduplication key set.
+ * @param diagnostic Diagnostic candidate to add.
  */
 function pushDiagnosticOnce(
   diagnostics: vscode.Diagnostic[],
@@ -208,6 +215,8 @@ function pushDiagnosticOnce(
 
 /**
  * Normalizes a configured method pattern so it can be converted to a call regex.
+ *
+ * @param pattern Method pattern from configuration or inference.
  */
 function normalizeMethodPattern(pattern: string): string {
   return pattern.trim().replace(/\(\s*$/, "");
@@ -215,6 +224,8 @@ function normalizeMethodPattern(pattern: string): string {
 
 /**
  * Escapes regular-expression metacharacters in literal method names.
+ *
+ * @param value Literal value to escape.
  */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -222,6 +233,8 @@ function escapeRegExp(value: string): string {
 
 /**
  * Removes a trailing locale argument from the parsed argument list.
+ *
+ * @param args Parsed argument list from a message call.
  */
 function stripTrailingLocaleArg(args: ArgPart[]): boolean {
   if (args.length === 0) {
@@ -240,6 +253,8 @@ function stripTrailingLocaleArg(args: ArgPart[]): boolean {
 /**
  * Heuristically detects locale-like expressions that should not count as
  * message placeholders.
+ *
+ * @param arg Argument token to evaluate.
  */
 function isLikelyLocaleArg(arg: string): boolean {
   const trimmed = arg.trim();
@@ -254,6 +269,8 @@ function isLikelyLocaleArg(arg: string): boolean {
 /**
  * Heuristically detects exception-like identifiers used without type
  * information.
+ *
+ * @param arg Argument token to evaluate.
  */
 function isLikelyExceptionArg(arg: string): boolean {
   const trimmed = arg.trim();
@@ -269,6 +286,8 @@ function isLikelyExceptionArg(arg: string): boolean {
 
 /**
  * Splits a raw argument list while respecting nested syntax and string literals.
+ *
+ * @param argString Raw text inside call parentheses.
  */
 function safeSplit(argString: string): string[] {
   return safeSplitWithOffsets(argString).map((part) => part.text);
@@ -276,6 +295,8 @@ function safeSplit(argString: string): string[] {
 
 /**
  * Splits a raw argument list and preserves each part's relative offset.
+ *
+ * @param argString Raw text inside call parentheses.
  */
 function safeSplitWithOffsets(argString: string): ArgPart[] {
   const result: ArgPart[] = [];
@@ -362,6 +383,10 @@ function safeSplitWithOffsets(argString: string): ArgPart[] {
 
 /**
  * Pushes a trimmed argument token into the parsed result list.
+ *
+ * @param result Destination array for parsed arguments.
+ * @param raw Raw token text before trimming.
+ * @param tokenStart Relative start offset of the token.
  */
 function pushArgPart(result: ArgPart[], raw: string, tokenStart: number): void {
   const trimmed = raw.trim();
@@ -378,6 +403,9 @@ function pushArgPart(result: ArgPart[], raw: string, tokenStart: number): void {
 
 /**
  * Counts effective placeholder arguments after applying supported shortcuts.
+ *
+ * @param args Parsed placeholder argument candidates.
+ * @param expectedArgCount Placeholder count expected from message template.
  */
 function countActualArguments(
   args: ArgPart[],
@@ -418,6 +446,10 @@ function countActualArguments(
  * locally-declared method that returns an array literal.
  *
  * This logic targets syntactically valid Java method declarations.
+ *
+ * @param source Full Java source text.
+ * @param methodName Helper method name used at the call site.
+ * @param callArgCount Argument count at the helper call site.
  */
 function inferReturnedArrayArgCountForCall(
   source: string,
@@ -456,6 +488,8 @@ function inferReturnedArrayArgCountForCall(
 
 /**
  * Counts method parameters while ignoring commas inside generic type brackets.
+ *
+ * @param paramsText Raw parameter-list text from a method declaration.
  */
 function countMethodParams(paramsText: string): number {
   if (paramsText.length === 0) {
@@ -483,6 +517,9 @@ function countMethodParams(paramsText: string): number {
 
 /**
  * Finds the matching `}` for a method body that starts with `{`.
+ *
+ * @param source Source text containing a method body.
+ * @param openBraceIndex Index of the opening `{`.
  */
 function findMatchingBrace(source: string, openBraceIndex: number): number {
   let depth = 0;
@@ -505,6 +542,10 @@ function findMatchingBrace(source: string, openBraceIndex: number): number {
 
 /**
  * Resolves the trailing argument type and returns whether it is throwable-like.
+ *
+ * @param document Java source document that owns the call expression.
+ * @param arg Parsed trailing argument candidate.
+ * @param baseOffset Offset of the first argument character in source text.
  */
 async function isThrowableArgument(
   document: vscode.TextDocument,
@@ -538,6 +579,10 @@ async function isThrowableArgument(
 /**
  * Follows a type-definition location chain to determine whether it resolves to
  * a throwable type.
+ *
+ * @param location Current type-definition location to inspect.
+ * @param visited Visited location keys used to avoid recursion loops.
+ * @param depth Current recursion depth.
  */
 async function locationResolvesToThrowable(
   location: vscode.Location | vscode.LocationLink,
@@ -611,6 +656,8 @@ async function locationResolvesToThrowable(
 
 /**
  * Narrows a VS Code definition result to a {@link vscode.LocationLink}.
+ *
+ * @param location Location result returned by VS Code APIs.
  */
 function isLocationLink(
   location: vscode.Location | vscode.LocationLink
@@ -620,6 +667,9 @@ function isLocationLink(
 
 /**
  * Finds a nearby class or record declaration for a resolved Java type.
+ *
+ * @param document Opened Java type-definition document.
+ * @param aroundLine Line near the type-definition target.
  */
 function findTypeDeclaration(
   document: vscode.TextDocument,
@@ -652,6 +702,8 @@ function findTypeDeclaration(
 
 /**
  * Returns whether a simple or qualified type name is throwable-compatible.
+ *
+ * @param typeName Simple or qualified type name.
  */
 function isThrowableTypeName(typeName: string): boolean {
   return /^(?:Throwable|Exception|RuntimeException|Error)$/.test(
