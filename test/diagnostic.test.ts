@@ -238,6 +238,27 @@ describe("validatePlaceholders", () => {
     assert.strictEqual(seen[0].length, 0);
   });
 
+  it("getMessage(..., null, locale) で診断されないこと", async () => {
+    patterns = ["messageSource.getMessage"];
+    text = `messageSource.getMessage("email.verification.subject", null, locale)`;
+    getMessageValueForKey.mockResolvedValue("Email verification");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
+  it("getMessage(..., (Object[]) null, locale) で診断されないこと", async () => {
+    patterns = ["messageSource.getMessage"];
+    text =
+      'messageSource.getMessage("email.verification.subject", (Object[]) null, locale)';
+    getMessageValueForKey.mockResolvedValue("Email verification");
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 0);
+  });
+
   it("重複する抽出パターンでも同じ診断は1件だけ登録されること", async () => {
     patterns = ["log", "foo.log"];
     text = `foo.log("MSG", a)`;
@@ -461,6 +482,23 @@ describe("validatePlaceholders", () => {
     await validatePlaceholders(doc, collection);
     assert.strictEqual(seen.length, 1);
     assert.strictEqual(seen[0].length, 1);
+  });
+
+  it("MSG=A {0}, B {1} で末尾 ex の型解決が失敗した場合は不一致 Error になること", async () => {
+    patterns = ["log"];
+    text = `log("MSG", customerId, orderId, ex)`;
+    getMessageValueForKey.mockResolvedValue("A {0}, B {1}");
+
+    executeCommand.mockRejectedValue(new Error("type lookup failed"));
+
+    await validatePlaceholders(doc, collection);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].length, 1);
+    assert.strictEqual(
+      seen[0][0].message,
+      "⚠️ Placeholder count (2) doesn’t match provided argument count (3)."
+    );
+    assert.strictEqual(seen[0][0].severity, vscode.DiagnosticSeverity.Error);
   });
 
   it("型定義 location に選択レンジがない場合は安全側で診断すること", async () => {

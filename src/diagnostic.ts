@@ -420,6 +420,10 @@ function countActualArguments(
   }
 
   if (argTexts.length === 1) {
+    if (isNullArrayArgument(argTexts[0])) {
+      return 0;
+    }
+
     const arrayMatch = argTexts[0].match(
       /new\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\[\s*\]\s*{([\s\S]*?)}/
     );
@@ -439,6 +443,23 @@ function countActualArguments(
   }
 
   return argTexts.filter((e) => e.trim() !== "").length;
+}
+
+/**
+ * Detects arguments that explicitly pass no placeholder values, such as
+ * `null` or `(Object[]) null`.
+ *
+ * @param argText Single argument text.
+ */
+function isNullArrayArgument(argText: string): boolean {
+  const trimmed = argText.trim();
+  if (trimmed === "null") {
+    return true;
+  }
+
+  return /^\(\s*[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\s*\[\s*\])+\s*\)\s*null$/.test(
+    trimmed
+  );
 }
 
 /**
