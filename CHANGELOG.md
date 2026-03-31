@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] - 2026-04-01
+
+### Fixed (1.1.1)
+
+- Fixed false-positive placeholder mismatch diagnostics for Issue #11:
+  `messageSource.getMessage(..., null, locale)` by treating `null` and
+  `(Object[]) null` as zero placeholder arguments.
+- Added regression tests to ensure `null` and casted-null argument forms are
+  not flagged for placeholder mismatch when no placeholders are expected.
+
+### Changed (1.1.1)
+
+- Bumped extension version to **1.1.1**.
+
+---
+
 ## [1.1.0] - 2026-03-30
 
 ### Added (1.1.0)
